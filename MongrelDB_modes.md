@@ -8,7 +8,7 @@ In native mode, the Hermes process loads `libmongreldb.so` directly and calls th
 
 ### Why native mode fits Hermes
 
-For a typical single-user Hermes deployment, native mode is the simplest and fastest choice. There is no extra process to manage, no HTTP overhead, and the database is created automatically on first use. The FFI path is what produced the benchmark numbers in the README: **0.94 ms / 0.63 ms** model-free and **25.88 ms / 30.64 ms** with dense ANN.
+For a typical single-user Hermes deployment, native mode is the simplest and fastest choice. There is no extra process to manage, no HTTP overhead, and the database is created automatically on first use. The FFI path produced these benchmark numbers on a 50-entry synthetic dataset: **0.94 ms / 0.63 ms** model-free and **25.88 ms / 19.3 ms** with dense ANN (P@5 1.00, R@5 0.50 on exact topic queries).
 
 ### Configuration
 

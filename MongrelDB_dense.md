@@ -72,12 +72,12 @@ If you also add `memory_type` or `state` filters, they are applied as hard `must
 
 With `all-MiniLM-L6-v2` on a modern CPU, expect roughly 20–30 ms per insert or search. The database itself is under 1 ms; the embedding model dominates the latency.
 
-Measured on a 50-entry synthetic dataset:
+Measured on a 50-entry synthetic dataset, 5 topics, top_k=5, native FFI, warm model cache:
 
-| Mode | Insert (ms) | Search (ms) |
-|------|------------:|------------:|
-| Model-free | 0.94 | 0.63 |
-| Dense ANN (`all-MiniLM-L6-v2`) | 25.88 | 30.64 |
+|| Mode | Insert (ms) | Search (ms) | P@5 | R@5 |
+||------|------------:|------------:|----:|----:|
+|| Model-free | 0.94 | 0.63 | 1.00 | 0.50 |
+|| Dense ANN (`all-MiniLM-L6-v2`) | 25.88 | 19.3 | 1.00 | 0.50 |
 
 On a lexical benchmark the two modes score identically, because the queries are exact topic strings. The value of dense ANN appears on vague or paraphrased queries, where sparse-only retrieval would miss the connection.
 
