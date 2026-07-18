@@ -1,12 +1,12 @@
 # Security
 
-This document describes the security properties of the MongrelDB Hermes memory
-provider and how to report vulnerabilities.
+This document describes the security properties of MongrelDB-backed memory for
+Hermes Agent and how to report vulnerabilities.
 
 ## Overview
 
-MongrelDB Hermes is a Hermes Agent **memory provider plugin**. It stores and
-retrieves agent memories in MongrelDB using either:
+This repository is a Hermes Agent **memory provider plugin** backed by
+MongrelDB. It stores and retrieves agent memories using either:
 
 - **Native mode** — in-process `libmongreldb.so` (C FFI), or
 - **Daemon mode** — HTTP client to `mongreldb-server`.

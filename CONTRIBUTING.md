@@ -1,7 +1,7 @@
-# Contributing to MongrelDB Hermes
+# Contributing to MongrelDB plugin for Hermes
 
-Thanks for taking the time to help the MongrelDB Hermes memory provider. This
-document describes how to propose a change, what we expect from a pull
+Thanks for taking the time to help MongrelDB-backed memory for Hermes Agent.
+This document describes how to propose a change, what we expect from a pull
 request, and the coding standards that apply to the codebase.
 
 If anything here is unclear or out of date, open an issue or a PR.
@@ -13,7 +13,7 @@ details, not the person. Public reviews stay focused on the diff.
 
 ## How to propose a change
 
-MongrelDB Hermes uses a standard **fork → branch → pull request** workflow on
+This project uses a standard **fork → branch → pull request** workflow on
 GitHub.
 
 1. **Fork** [`visorcraft/MongrelDB-Hermes`](https://github.com/visorcraft/MongrelDB-Hermes)

@@ -1,7 +1,7 @@
-# Contributing to MongrelDB Hermes
+# Contributing to MongrelDB plugin for Hermes
 
-Thanks for taking the time to help the MongrelDB Hermes memory provider. This
-document describes how to propose a change, what we expect from a pull
+Thanks for taking the time to help MongrelDB-backed memory for Hermes Agent.
+This document describes how to propose a change, what we expect from a pull
 request, and the coding standards that apply to the codebase.
 
 If anything here is unclear or out of date, open an issue or a PR.

@@ -2,10 +2,10 @@
   <img src="assets/mongrel.png" alt="MongrelDB logo" width="250" />
 </p>
 
-<h1 align="center">MongrelDB Hermes</h1>
+<h1 align="center">MongrelDB plugin for Hermes</h1>
 
 <p align="center">
-  <b>Hermes Agent memory provider plugin for MongrelDB - hybrid long-term memory with dense ANN, sparse retrieval, exact text, bitmaps, learned ranges, and MinHash dedup in one engine.</b>
+  <b>MongrelDB-backed memory for Hermes Agent - hybrid long-term memory with dense ANN, sparse retrieval, exact text, bitmaps, learned ranges, and MinHash dedup in one engine.</b>
 </p>
 
 <p align="center">
