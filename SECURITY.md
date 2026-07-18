@@ -38,8 +38,8 @@ directory. Dense embeddings are enabled by default and produced locally with
   Hermes process. Treat model weights and any remote model download as
   supply-chain surface; pin versions where practical.
 - **LLM enrichment.** Optional `enrichment_mode: llm` sends memory text to the
-  configured OpenAI-compatible API. Do not enable it with untrusted content without
-  understanding that egress path.
+  configured OpenAI-compatible API. It requires an API key. Do not enable it
+  with untrusted content without understanding that egress path.
 
 ## Engine / daemon security (MongrelDB)
 

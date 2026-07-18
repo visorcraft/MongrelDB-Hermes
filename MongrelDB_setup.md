@@ -16,7 +16,7 @@ hermes memory setup
 
 Select `mongreldb_hermes`, listed as `local`. No API key is required. Choose `dense` (default) to install `sentence-transformers` and download `all-MiniLM-L6-v2` automatically, or `sparse` to skip the model. Memory setup selects, configures, and activates it as the exclusive memory provider.
 
-Keep `heuristic` enrichment (default) for local, no-API-key operation. `llm` supports any OpenAI-compatible endpoint and sends memory text to that configured provider.
+Keep `heuristic` enrichment (default) for local, fast, private operation. `llm` is slower, requires an OpenAI-compatible API key, and sends memory text to that configured provider.
 
 Saving memory setup downloads both MongrelDB 0.60.3 runtime files for the current platform. If setup is skipped, first provider startup performs the same install. Downloads are SHA-256 verified and deleted after extraction. Only these files remain:
 
@@ -64,7 +64,7 @@ memory:
     enrichment_mode: heuristic
 ```
 
-For optional LLM enrichment, configure `llm_base_url` and `llm_model`, then set `MONGRELDB_LLM_API_KEY` or `OPENAI_API_KEY`. Override them with `MONGRELDB_LLM_BASE_URL` and `MONGRELDB_LLM_MODEL`. Local OpenAI-compatible endpoints may omit the key.
+For optional LLM enrichment, configure `llm_base_url` and `llm_model`, then set `MONGRELDB_LLM_API_KEY` or `OPENAI_API_KEY`. Override them with `MONGRELDB_LLM_BASE_URL` and `MONGRELDB_LLM_MODEL`.
 
 Encryption is enabled by default. If no passphrase is configured, the plugin creates `~/.hermes/mongreldb_hermes.key` with mode `0600`. Back up that key with the database. Set `encryption: disabled` only to opt into plaintext storage.
 

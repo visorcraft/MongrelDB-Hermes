@@ -78,6 +78,7 @@ def test_encryption_defaults_on_and_can_be_disabled():
             enrichment = next(field for field in schema if field["key"] == "enrichment_mode")
             assert enrichment["default"] == "heuristic"
             assert enrichment["choices"] == ["heuristic", "llm"]
+            assert enrichment["description"] == "Enrichment: heuristic = local, fast, private; llm = slower, requires OpenAI-compatible API key"
             llm_base_url = next(field for field in schema if field["key"] == "llm_base_url")
             llm_model = next(field for field in schema if field["key"] == "llm_model")
             assert llm_base_url["when"] == {"enrichment_mode": "llm"}
@@ -162,6 +163,13 @@ def test_openai_compatible_llm_config():
         provider._llm_base_url = "http://127.0.0.1:11434/v1"
         provider._llm_model = "local-model"
         assert provider._make_llm_client() == "client"
+        provider._llm_api_key = None
+        try:
+            provider._make_llm_client()
+        except ValueError as error:
+            assert "MONGRELDB_LLM_API_KEY" in str(error)
+        else:
+            raise AssertionError("LLM enrichment accepted a missing API key")
     finally:
         if original_openai is None:
             sys.modules.pop("openai", None)

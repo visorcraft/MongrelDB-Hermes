@@ -358,7 +358,7 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             },
             {
                 "key": "enrichment_mode",
-                "description": "Enrichment: heuristic = local, no API key; llm = OpenAI-compatible API",
+                "description": "Enrichment: heuristic = local, fast, private; llm = slower, requires OpenAI-compatible API key",
                 "default": "heuristic",
                 "choices": ["heuristic", "llm"],
             },
@@ -427,9 +427,9 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         except ImportError:
             _install_python_package("openai")
             from openai import OpenAI
-        if not self._llm_api_key and self._llm_base_url == DEFAULT_LLM_BASE_URL:
-            raise ValueError("LLM enrichment with OpenAI requires MONGRELDB_LLM_API_KEY or OPENAI_API_KEY")
-        return OpenAI(api_key=self._llm_api_key or "not-required", base_url=self._llm_base_url)
+        if not self._llm_api_key:
+            raise ValueError("LLM enrichment requires MONGRELDB_LLM_API_KEY or OPENAI_API_KEY")
+        return OpenAI(api_key=self._llm_api_key, base_url=self._llm_base_url)
 
     def _open_db(self) -> None:
         with self._lock:

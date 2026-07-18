@@ -41,7 +41,7 @@ hermes memory setup
 
 Select `mongreldb_hermes`, listed as `local`. No API key is required. Choose `dense` (default) for semantic ANN with `all-MiniLM-L6-v2`, or `sparse` for model-free retrieval. Dense setup installs `sentence-transformers` and downloads the model automatically. Memory setup also downloads both MongrelDB runtimes and activates the provider.
 
-Keep `heuristic` enrichment (default) for fully local operation. `llm` enrichment is optional and supports any OpenAI-compatible endpoint. It sends memory text to that configured provider.
+Keep `heuristic` enrichment (default) for local, fast, private operation. `llm` enrichment is slower, requires an OpenAI-compatible API key, and sends memory text to that configured provider.
 
 ## Why MongrelDB for Hermes?
 
@@ -89,7 +89,7 @@ Two execution modes (configure `mode: native` or `mode: daemon`):
 - Linux x64 glibc/musl, Linux arm64 glibc, or macOS x64/arm64
 - `sentence-transformers` when dense ANN is enabled; Hermes installs it automatically during memory setup
 
-Plugin 1.0.2 targets MongrelDB 0.60.3 and [MongrelDB Kit 0.60.3](https://crates.io/crates/mongreldb-kit/0.60.3). When memory settings are saved, or on first provider start if setup was skipped, it downloads the matching native archive and daemon binary from the [MongrelDB 0.60.3 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.60.3). It verifies both SHA-256 digests, keeps only the shared library and `mongreldb-server`, and deletes the downloads. The plugin uses Kit through the daemon HTTP API, so no separate Kit library is installed.
+Plugin 1.0.3 targets MongrelDB 0.60.3 and [MongrelDB Kit 0.60.3](https://crates.io/crates/mongreldb-kit/0.60.3). When memory settings are saved, or on first provider start if setup was skipped, it downloads the matching native archive and daemon binary from the [MongrelDB 0.60.3 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.60.3). It verifies both SHA-256 digests, keeps only the shared library and `mongreldb-server`, and deletes the downloads. The plugin uses Kit through the daemon HTTP API, so no separate Kit library is installed.
 
 Dense setup automatically installs `sentence-transformers` into the Hermes environment and downloads `all-MiniLM-L6-v2`. Sparse setup skips both.
 
@@ -131,7 +131,7 @@ memory:
 
 The bundled daemon is the default. Set `MONGRELDB_DAEMON_BINARY` to use another binary.
 
-For optional LLM enrichment, set `MONGRELDB_LLM_API_KEY` (or `OPENAI_API_KEY`). Override `MONGRELDB_LLM_BASE_URL` and `MONGRELDB_LLM_MODEL` for another OpenAI-compatible provider. Local endpoints that need no key may omit it.
+For optional LLM enrichment, set `MONGRELDB_LLM_API_KEY` (or `OPENAI_API_KEY`). Override `MONGRELDB_LLM_BASE_URL` and `MONGRELDB_LLM_MODEL` for another OpenAI-compatible provider.
 
 Opt out of dense ANN in manual config:
 
