@@ -145,7 +145,6 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
 
     def __init__(self):
         self._mode = "native"
-        self._mode = "native"
         self._db_dir = ""
         self._embedding_model_name = None
         self._embedder: Optional[_Embedder] = None
@@ -157,6 +156,10 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         self._lock = threading.RLock()
         self._enrichment_mode = "heuristic"  # "heuristic" or "llm"
         self._llm_client = None
+        # Encryption at rest (AES-256-GCM passphrase) and optional credentials
+        self._passphrase: Optional[str] = None
+        self._db_username: Optional[str] = None
+        self._db_password: Optional[str] = None
 
     @property
     def name(self) -> str:
@@ -183,6 +186,27 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             or cfg_get(config, "memory", "mongreldb_hermes", "dim", default=DEFAULT_DIM)
         )
         self._enrichment_mode = cfg_get(config, "memory", "mongreldb_hermes", "enrichment_mode", default="heuristic")
+        # Prefer env for secrets; config keys supported for local/dev only.
+        self._passphrase = (
+            os.environ.get("MONGRELDB_PASSPHRASE")
+            or cfg_get(config, "memory", "mongreldb_hermes", "passphrase", default=None)
+            or None
+        )
+        self._db_username = (
+            os.environ.get("MONGRELDB_DB_USERNAME")
+            or cfg_get(config, "memory", "mongreldb_hermes", "username", default=None)
+            or None
+        )
+        self._db_password = (
+            os.environ.get("MONGRELDB_DB_PASSWORD")
+            or cfg_get(config, "memory", "mongreldb_hermes", "password", default=None)
+            or None
+        )
+        if self._passphrase == "":
+            self._passphrase = None
+        if not self._db_username or not self._db_password:
+            self._db_username = None
+            self._db_password = None
 
     def is_available(self) -> bool:
         try:
@@ -196,6 +220,9 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             {"key": "embedding_model", "description": "Sentence-transformers model name (empty = dense disabled)", "default": DEFAULT_EMBEDDING_MODEL},
             {"key": "dim", "description": "Embedding dimension", "default": DEFAULT_DIM},
             {"key": "enrichment_mode", "description": "heuristic or llm", "default": "heuristic"},
+            {"key": "passphrase", "description": "AES-256-GCM at-rest passphrase (prefer MONGRELDB_PASSPHRASE env)", "default": ""},
+            {"key": "username", "description": "Optional DB username (with password; prefer MONGRELDB_DB_USERNAME)", "default": ""},
+            {"key": "password", "description": "Optional DB password (with username; prefer MONGRELDB_DB_PASSWORD)", "default": ""},
         ]
 
     def initialize(self, session_id: str, **kwargs) -> None:
@@ -225,10 +252,14 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             if self._db is not None:
                 return
             catalog = os.path.join(self._db_dir, "CATALOG")
-            if os.path.exists(catalog):
-                self._db = _ffi.Database.open(self._db_dir)
-            else:
-                self._db = _ffi.Database.create(self._db_dir)
+            exists = os.path.exists(catalog)
+            self._db = _ffi.Database.open_or_create(
+                self._db_dir,
+                passphrase=self._passphrase,
+                username=self._db_username,
+                password=self._db_password,
+            )
+            if not exists:
                 schema = _ffi.Schema.build(
                     columns=[
                         {"id": 1, "name": "id", "ty": _ffi.MDB_TYPE_INT64, "flags": _ffi.MDB_COL_PRIMARY_KEY},

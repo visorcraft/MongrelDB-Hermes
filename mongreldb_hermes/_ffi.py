@@ -211,6 +211,18 @@ _lib.mongreldb_create.restype = c_void_p
 _lib.mongreldb_create.argtypes = [c_char_p]
 _lib.mongreldb_open.restype = c_void_p
 _lib.mongreldb_open.argtypes = [c_char_p]
+_lib.mongreldb_create_with_credentials.restype = c_void_p
+_lib.mongreldb_create_with_credentials.argtypes = [c_char_p, c_char_p, c_char_p]
+_lib.mongreldb_open_with_credentials.restype = c_void_p
+_lib.mongreldb_open_with_credentials.argtypes = [c_char_p, c_char_p, c_char_p]
+_lib.mongreldb_create_encrypted.restype = c_void_p
+_lib.mongreldb_create_encrypted.argtypes = [c_char_p, c_char_p]
+_lib.mongreldb_open_encrypted.restype = c_void_p
+_lib.mongreldb_open_encrypted.argtypes = [c_char_p, c_char_p]
+_lib.mongreldb_create_encrypted_with_credentials.restype = c_void_p
+_lib.mongreldb_create_encrypted_with_credentials.argtypes = [c_char_p, c_char_p, c_char_p, c_char_p]
+_lib.mongreldb_open_encrypted_with_credentials.restype = c_void_p
+_lib.mongreldb_open_encrypted_with_credentials.argtypes = [c_char_p, c_char_p, c_char_p, c_char_p]
 _lib.mongreldb_database_close.restype = c_int32
 _lib.mongreldb_database_close.argtypes = [c_void_p]
 _lib.mongreldb_database_free.restype = None
@@ -287,6 +299,111 @@ class Database:
     @classmethod
     def open(cls, path):
         return cls(_check_ptr(_lib.mongreldb_open(path.encode("utf-8")), "Database.open"))
+
+    @classmethod
+    def create_with_credentials(cls, path, username, password):
+        return cls(
+            _check_ptr(
+                _lib.mongreldb_create_with_credentials(
+                    path.encode("utf-8"),
+                    username.encode("utf-8"),
+                    password.encode("utf-8"),
+                ),
+                "Database.create_with_credentials",
+            )
+        )
+
+    @classmethod
+    def open_with_credentials(cls, path, username, password):
+        return cls(
+            _check_ptr(
+                _lib.mongreldb_open_with_credentials(
+                    path.encode("utf-8"),
+                    username.encode("utf-8"),
+                    password.encode("utf-8"),
+                ),
+                "Database.open_with_credentials",
+            )
+        )
+
+    @classmethod
+    def create_encrypted(cls, path, passphrase):
+        return cls(
+            _check_ptr(
+                _lib.mongreldb_create_encrypted(
+                    path.encode("utf-8"),
+                    passphrase.encode("utf-8"),
+                ),
+                "Database.create_encrypted",
+            )
+        )
+
+    @classmethod
+    def open_encrypted(cls, path, passphrase):
+        return cls(
+            _check_ptr(
+                _lib.mongreldb_open_encrypted(
+                    path.encode("utf-8"),
+                    passphrase.encode("utf-8"),
+                ),
+                "Database.open_encrypted",
+            )
+        )
+
+    @classmethod
+    def create_encrypted_with_credentials(cls, path, passphrase, username, password):
+        return cls(
+            _check_ptr(
+                _lib.mongreldb_create_encrypted_with_credentials(
+                    path.encode("utf-8"),
+                    passphrase.encode("utf-8"),
+                    username.encode("utf-8"),
+                    password.encode("utf-8"),
+                ),
+                "Database.create_encrypted_with_credentials",
+            )
+        )
+
+    @classmethod
+    def open_encrypted_with_credentials(cls, path, passphrase, username, password):
+        return cls(
+            _check_ptr(
+                _lib.mongreldb_open_encrypted_with_credentials(
+                    path.encode("utf-8"),
+                    passphrase.encode("utf-8"),
+                    username.encode("utf-8"),
+                    password.encode("utf-8"),
+                ),
+                "Database.open_encrypted_with_credentials",
+            )
+        )
+
+    @classmethod
+    def open_or_create(cls, path, *, passphrase=None, username=None, password=None):
+        """Open existing or create missing, with optional encryption and credentials.
+
+        Encryption (passphrase) and logical auth (username/password) are orthogonal.
+        Prefer passphrase set for at-rest protection; credentials enforce who may open.
+        """
+        catalog = os.path.join(path, "CATALOG")
+        exists = os.path.exists(catalog)
+        has_pass = bool(passphrase)
+        has_user = bool(username) and bool(password)
+        if exists:
+            if has_pass and has_user:
+                return cls.open_encrypted_with_credentials(path, passphrase, username, password)
+            if has_pass:
+                return cls.open_encrypted(path, passphrase)
+            if has_user:
+                return cls.open_with_credentials(path, username, password)
+            return cls.open(path)
+        if has_pass and has_user:
+            return cls.create_encrypted_with_credentials(path, passphrase, username, password)
+        if has_pass:
+            return cls.create_encrypted(path, passphrase)
+        if has_user:
+            return cls.create_with_credentials(path, username, password)
+        return cls.create(path)
 
     def close(self):
         if self._ptr:
