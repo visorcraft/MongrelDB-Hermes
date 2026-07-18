@@ -23,8 +23,10 @@ from typing import Any, Dict, List, Optional
 from agent.memory_provider import MemoryProvider
 
 DEFAULT_DB_DIR = ""
-DEFAULT_EMBEDDING_MODEL = ""
+DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 DEFAULT_DIM = 384
+DEFAULT_LLM_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_LLM_MODEL = "gpt-4.1-mini"
 DEFAULT_DAEMON_URL = "http://127.0.0.1:8453"
 DEFAULT_DAEMON_BINARY = os.path.join(os.path.dirname(__file__), "vendor", "0.60.3", "mongreldb-server")
 DEFAULT_ENCRYPTION = "enabled"
@@ -51,6 +53,22 @@ def _normalize_encryption(value) -> str:
     if value in {"disabled", "false", "no", "off"}:
         return "disabled"
     raise ValueError("MongrelDB encryption must be 'enabled' or 'disabled'")
+
+
+def _install_python_package(package: str) -> None:
+    import importlib
+    import shutil
+    import sys
+
+    uv = shutil.which("uv")
+    if not uv:
+        raise RuntimeError(f"{package} is required; install uv so Hermes can install it")
+    subprocess.run(
+        [uv, "pip", "install", "--python", sys.executable, package],
+        check=True,
+        timeout=600,
+    )
+    importlib.invalidate_caches()
 
 SEARCH_SCHEMA = {
     "name": "mongreldb_search",
@@ -156,7 +174,11 @@ class _Embedder:
         with self._lock:
             if self._model is not None:
                 return self._model
-            from sentence_transformers import SentenceTransformer
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError:
+                _install_python_package("sentence-transformers")
+                from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self.model_name)
             return self._model
 
@@ -190,6 +212,9 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         self._lock = threading.RLock()
         self._enrichment_mode = "heuristic"  # "heuristic" or "llm"
         self._llm_client = None
+        self._llm_base_url = DEFAULT_LLM_BASE_URL
+        self._llm_model = DEFAULT_LLM_MODEL
+        self._llm_api_key: Optional[str] = None
         # Encryption at rest (AES-256-GCM passphrase) and optional credentials
         self._passphrase: Optional[str] = None
         self._db_username: Optional[str] = None
@@ -235,7 +260,20 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             os.environ.get("MONGRELDB_DIM")
             or cfg_get(config, "memory", "mongreldb_hermes", "dim", default=DEFAULT_DIM)
         )
-        self._enrichment_mode = cfg_get(config, "memory", "mongreldb_hermes", "enrichment_mode", default="heuristic")
+        self._enrichment_mode = str(
+            cfg_get(config, "memory", "mongreldb_hermes", "enrichment_mode", default="heuristic")
+        ).lower()
+        if self._enrichment_mode not in {"heuristic", "llm"}:
+            raise ValueError("MongrelDB enrichment_mode must be 'heuristic' or 'llm'")
+        self._llm_base_url = str(
+            os.environ.get("MONGRELDB_LLM_BASE_URL")
+            or cfg_get(config, "memory", "mongreldb_hermes", "llm_base_url", default=DEFAULT_LLM_BASE_URL)
+        ).rstrip("/")
+        self._llm_model = str(
+            os.environ.get("MONGRELDB_LLM_MODEL")
+            or cfg_get(config, "memory", "mongreldb_hermes", "llm_model", default=DEFAULT_LLM_MODEL)
+        )
+        self._llm_api_key = os.environ.get("MONGRELDB_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
         self._daemon_url = str(
             os.environ.get("MONGRELDB_DAEMON_URL")
             or cfg_get(config, "memory", "mongreldb_hermes", "daemon_url", default=DEFAULT_DAEMON_URL)
@@ -312,9 +350,30 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
                 "default": DEFAULT_ENCRYPTION,
                 "choices": ["enabled", "disabled"],
             },
-            {"key": "embedding_model", "description": "Sentence-transformers model name (empty = dense disabled)", "default": DEFAULT_EMBEDDING_MODEL},
-            {"key": "dim", "description": "Embedding dimension", "default": DEFAULT_DIM},
-            {"key": "enrichment_mode", "description": "heuristic or llm", "default": "heuristic"},
+            {
+                "key": "retrieval_mode",
+                "description": "Retrieval mode: dense = semantic ANN with all-MiniLM-L6-v2; sparse = model-free",
+                "default": "dense",
+                "choices": ["dense", "sparse"],
+            },
+            {
+                "key": "enrichment_mode",
+                "description": "Enrichment: heuristic = local, no API key; llm = OpenAI-compatible API",
+                "default": "heuristic",
+                "choices": ["heuristic", "llm"],
+            },
+            {
+                "key": "llm_base_url",
+                "description": "OpenAI-compatible base URL",
+                "default": DEFAULT_LLM_BASE_URL,
+                "when": {"enrichment_mode": "llm"},
+            },
+            {
+                "key": "llm_model",
+                "description": "OpenAI-compatible model name",
+                "default": DEFAULT_LLM_MODEL,
+                "when": {"enrichment_mode": "llm"},
+            },
             {"key": "daemon_url", "description": "MongrelDB daemon URL", "default": DEFAULT_DAEMON_URL, "when": {"mode": "daemon"}},
             {"key": "daemon_data_dir", "description": "Daemon data directory (blank uses db_dir)", "default": "", "when": {"mode": "daemon"}},
             {"key": "daemon_binary", "description": "mongreldb-server path", "default": DEFAULT_DAEMON_BINARY, "when": {"mode": "daemon"}},
@@ -327,6 +386,14 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
 
         _, server = _install_binaries()
         values = dict(values)
+        retrieval_mode = values.get("retrieval_mode", "dense")
+        if retrieval_mode not in {"dense", "sparse"}:
+            raise ValueError("MongrelDB retrieval_mode must be 'dense' or 'sparse'")
+        values["embedding_model"] = DEFAULT_EMBEDDING_MODEL if retrieval_mode == "dense" else ""
+        values["dim"] = DEFAULT_DIM
+        if retrieval_mode == "dense":
+            print(f"  Installing/downloading embedding model: {DEFAULT_EMBEDDING_MODEL}")
+            _Embedder(DEFAULT_EMBEDDING_MODEL)._load()
         values["encryption"] = _normalize_encryption(values.get("encryption"))
         if (
             values["encryption"] == "enabled"
@@ -355,15 +422,14 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             self._llm_client = self._make_llm_client()
 
     def _make_llm_client(self):
-        from openai import OpenAI
-        env_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", ".hermes", ".env")
-        env_path = os.path.abspath(env_path)
-        if os.path.exists(env_path):
-            for line in open(env_path).read().splitlines():
-                if "=" in line and not line.startswith("#"):
-                    k, v = line.split("=", 1)
-                    os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-        return OpenAI(api_key=os.environ.get("KIMI_API_KEY"), base_url="https://api.kimi.com/coding/v1")
+        try:
+            from openai import OpenAI
+        except ImportError:
+            _install_python_package("openai")
+            from openai import OpenAI
+        if not self._llm_api_key and self._llm_base_url == DEFAULT_LLM_BASE_URL:
+            raise ValueError("LLM enrichment with OpenAI requires MONGRELDB_LLM_API_KEY or OPENAI_API_KEY")
+        return OpenAI(api_key=self._llm_api_key or "not-required", base_url=self._llm_base_url)
 
     def _open_db(self) -> None:
         with self._lock:
@@ -594,7 +660,7 @@ Memory: {text}
 JSON:"""
         try:
             resp = self._llm_client.chat.completions.create(
-                model="kimi-k3.0",
+                model=self._llm_model,
                 messages=[{"role": "user", "content": prompt}],
             )
             content = resp.choices[0].message.content

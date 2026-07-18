@@ -10,4 +10,4 @@
 hermes memory setup
 ```
 
-Select `mongreldb_hermes`, listed as `local`. No API key is required. Memory setup configures and activates it.
+Select `mongreldb_hermes`, listed as `local`. No API key is required. Choose `dense` (default) to install `sentence-transformers` and download `all-MiniLM-L6-v2`, or `sparse` to skip the model. Memory setup configures and activates it.

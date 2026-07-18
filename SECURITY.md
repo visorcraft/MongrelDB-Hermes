@@ -14,9 +14,8 @@ MongrelDB. It stores and retrieves agent memories using either:
 Encryption at rest is enabled by default. When no passphrase is supplied, the
 plugin generates one in `~/.hermes/mongreldb_hermes.key` with mode `0600` and
 uses it for native and daemon opens. Data at rest lives in the MongrelDB data
-directory. Optional dense embeddings may be produced by a local model (for
-example via `sentence-transformers`); that inference runs in the Hermes
-process.
+directory. Dense embeddings are enabled by default and produced locally with
+`sentence-transformers`; that inference runs in the Hermes process.
 
 ## Plugin security properties
 
@@ -38,8 +37,8 @@ process.
 - **Embeddings.** Enabling `embedding_model` loads a local model into the
   Hermes process. Treat model weights and any remote model download as
   supply-chain surface; pin versions where practical.
-- **LLM enrichment.** Optional `enrichment_mode: llm` sends memory text to a
-  configured LLM API. Do not enable it with untrusted content without
+- **LLM enrichment.** Optional `enrichment_mode: llm` sends memory text to the
+  configured OpenAI-compatible API. Do not enable it with untrusted content without
   understanding that egress path.
 
 ## Engine / daemon security (MongrelDB)
@@ -65,8 +64,8 @@ Do not expose the daemon directly to an untrusted network.
 ## Dependency security
 
 Direct runtime dependencies may include Hermes, MongrelDB (`libmongreldb` /
-`mongreldb-server`), and optional Python packages (`sentence-transformers`,
-`openai`). Report dependency issues via Dependabot or the
+`mongreldb-server`), `sentence-transformers`, and optional Python packages
+such as `openai`. Report dependency issues via Dependabot or the
 private vulnerability flow below. Engine vulnerabilities should also be
 reported against [visorcraft/MongrelDB](https://github.com/visorcraft/MongrelDB)
 when they are not specific to this plugin.

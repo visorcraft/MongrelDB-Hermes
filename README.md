@@ -39,7 +39,9 @@ Do not run either command. `mongreldb_hermes` is an exclusive memory provider, n
 hermes memory setup
 ```
 
-Select `mongreldb_hermes`, listed as `local`. No API key is required. Memory setup shows its configuration choices, activates it as the memory provider, and downloads both MongrelDB runtimes.
+Select `mongreldb_hermes`, listed as `local`. No API key is required. Choose `dense` (default) for semantic ANN with `all-MiniLM-L6-v2`, or `sparse` for model-free retrieval. Dense setup installs `sentence-transformers` and downloads the model automatically. Memory setup also downloads both MongrelDB runtimes and activates the provider.
+
+Keep `heuristic` enrichment (default) for fully local operation. `llm` enrichment is optional and supports any OpenAI-compatible endpoint. It sends memory text to that configured provider.
 
 ## Why MongrelDB for Hermes?
 
@@ -76,7 +78,7 @@ Two execution modes (configure `mode: native` or `mode: daemon`):
 - **Native Rust FFI** (default): Hermes loads `libmongreldb.so` and opens the data directory **in-process** - lowest latency; that process owns the exclusive storage open for `db_dir`.
 - **HTTP daemon**: Hermes is an HTTP client of `mongreldb-server`. The **daemon** owns the exclusive open; many processes can share the warm cache over HTTP. Do not also open the same data directory with native FFI while the daemon is running.
 
-Optional **dense ANN** when `embedding_model` is set (for example `all-MiniLM-L6-v2`, 384-d). Leave it empty for model-free hybrid sparse + lexical retrieval. MongrelDB core keeps embedding generation as a pluggable layer: applications may supply vectors, Kit/server may register providers, and ANN indexes operate only on stored vectors plus model metadata.
+**Dense ANN is enabled by default** with `all-MiniLM-L6-v2` at 384 dimensions. Select `sparse` during setup, or set `embedding_model: ""`, for model-free sparse + lexical retrieval. MongrelDB core keeps embedding generation as a pluggable layer: applications may supply vectors, Kit/server may register providers, and ANN indexes operate only on stored vectors plus model metadata.
 
 **Locking (0.60.x):** only one process may exclusively open a given MongrelDB data directory. In-process multi-handle/thread sharing is fine. Multi-process sharing goes through the daemon, not multiple native opens of the same path.
 
@@ -85,15 +87,11 @@ Optional **dense ANN** when `embedding_model` is set (for example `all-MiniLM-L6
 - [Hermes Agent](https://github.com/NousResearch/hermes-agent) with standalone plugin support
 - Python 3.10+ for the plugin runtime
 - Linux x64 glibc/musl, Linux arm64 glibc, or macOS x64/arm64
-- Optional: `sentence-transformers` when dense ANN is enabled
+- `sentence-transformers` when dense ANN is enabled; Hermes installs it automatically during memory setup
 
-Plugin 1.0.1 targets MongrelDB 0.60.3 and [MongrelDB Kit 0.60.3](https://crates.io/crates/mongreldb-kit/0.60.3). When memory settings are saved, or on first provider start if setup was skipped, it downloads the matching native archive and daemon binary from the [MongrelDB 0.60.3 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.60.3). It verifies both SHA-256 digests, keeps only the shared library and `mongreldb-server`, and deletes the downloads. The plugin uses Kit through the daemon HTTP API, so no separate Kit library is installed.
+Plugin 1.0.2 targets MongrelDB 0.60.3 and [MongrelDB Kit 0.60.3](https://crates.io/crates/mongreldb-kit/0.60.3). When memory settings are saved, or on first provider start if setup was skipped, it downloads the matching native archive and daemon binary from the [MongrelDB 0.60.3 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.60.3). It verifies both SHA-256 digests, keeps only the shared library and `mongreldb-server`, and deletes the downloads. The plugin uses Kit through the daemon HTTP API, so no separate Kit library is installed.
 
-Dense ANN additionally needs:
-
-```bash
-pip install --user sentence-transformers
-```
+Dense setup automatically installs `sentence-transformers` into the Hermes environment and downloads `all-MiniLM-L6-v2`. Sparse setup skips both.
 
 ## Manual Configuration
 
@@ -107,9 +105,14 @@ memory:
     mode: native                       # native | daemon
     db_dir: /home/user/.hermes/mongreldb_hermes_data
     encryption: enabled                # enabled by default; disabled = plaintext
-    embedding_model: ""                # "" = model-free; "all-MiniLM-L6-v2" = dense ANN
+    retrieval_mode: dense              # dense (default) | sparse
+    embedding_model: "all-MiniLM-L6-v2"
     dim: 384
-    enrichment_mode: heuristic         # heuristic | llm; llm needs KIMI_API_KEY
+    enrichment_mode: heuristic         # heuristic (default) | llm
+
+    # llm enrichment only; any OpenAI-compatible provider
+    llm_base_url: https://api.openai.com/v1
+    llm_model: gpt-4.1-mini
 
     # Blank/missing passphrase uses ~/.hermes/mongreldb_hermes.key (mode 0600)
     # Prefer MONGRELDB_PASSPHRASE when supplying your own passphrase.
@@ -128,10 +131,13 @@ memory:
 
 The bundled daemon is the default. Set `MONGRELDB_DAEMON_BINARY` to use another binary.
 
-Enable dense ANN in config:
+For optional LLM enrichment, set `MONGRELDB_LLM_API_KEY` (or `OPENAI_API_KEY`). Override `MONGRELDB_LLM_BASE_URL` and `MONGRELDB_LLM_MODEL` for another OpenAI-compatible provider. Local endpoints that need no key may omit it.
+
+Opt out of dense ANN in manual config:
 
 ```yaml
-    embedding_model: "all-MiniLM-L6-v2"
+    retrieval_mode: sparse
+    embedding_model: ""
     dim: 384
 ```
 
@@ -182,7 +188,7 @@ The plugin creates the database and table on first use.
 
 - [MongrelDB setup](MongrelDB_setup.md) - install and configure
 - [Modes](MongrelDB_modes.md) - native FFI vs HTTP daemon
-- [Dense ANN](MongrelDB_dense.md) - enabling `all-MiniLM-L6-v2` and model policy
+- [Dense ANN](MongrelDB_dense.md) - default `all-MiniLM-L6-v2` setup and model policy
 - [Standalone Rust](MongrelDB_standalone.md) - using MongrelDB directly outside Hermes
 - [Engine embeddings & retrieval](https://github.com/visorcraft/MongrelDB/blob/v0.60.3/docs/22-embeddings-and-retrieval.md) - pluggable `EmbeddingSource` / provider registry
 

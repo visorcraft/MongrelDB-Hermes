@@ -19,7 +19,8 @@ memory:
     mode: native
     db_dir: /home/user/.hermes/mongreldb_hermes_data
     encryption: enabled
-    embedding_model: ""
+    retrieval_mode: dense
+    embedding_model: "all-MiniLM-L6-v2"
     dim: 384
 ```
 
@@ -67,7 +68,8 @@ memory:
     daemon_pidfile: /tmp/mongreldb-hermes.pid
     daemon_log: /tmp/mongreldb-hermes.log
     daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.3/mongreldb-server
-    embedding_model: ""
+    retrieval_mode: dense
+    embedding_model: "all-MiniLM-L6-v2"
     dim: 384
 ```
 

@@ -1,6 +1,6 @@
-# Enabling dense ANN with MongrelDB
+# Dense ANN with MongrelDB
 
-By default, `mongreldb-hermes` runs in model-free mode. This gives the lowest latency because it skips the neural embedding model. If you need semantic retrieval for vague or paraphrased queries, enable dense ANN.
+By default, `mongreldb-hermes` uses dense ANN with `all-MiniLM-L6-v2`. Choose sparse mode during setup when lowest latency matters more than semantic recall.
 
 ## What dense ANN adds
 
@@ -20,9 +20,9 @@ even though the two phrases share no exact words. Dense embeddings capture meani
 
 This is the main capability that vector-only databases like ChromaDB advertise, but MongrelDB combines it with sparse, exact-text, bitmap, and range signals in the same query.
 
-## Choose an embedding model
+## Dense setup
 
-Set `embedding_model` in `config.yaml`. Any sentence-transformers model name works. The provider supplies vectors directly to MongrelDB; the engine itself does not depend on any specific embedding vendor.
+Dense mode is the setup default. Hermes installs `sentence-transformers`, and the plugin downloads `all-MiniLM-L6-v2` automatically. The provider supplies vectors directly to MongrelDB; the engine itself does not depend on any specific embedding vendor.
 
 ```yaml
 memory:
@@ -30,17 +30,10 @@ memory:
   mongreldb_hermes:
     mode: native
     db_dir: /home/user/.hermes/mongreldb_hermes_data
+    retrieval_mode: dense
     embedding_model: "all-MiniLM-L6-v2"
     dim: 384
 ```
-
-## Install the embedding dependency
-
-```bash
-pip install --user sentence-transformers
-```
-
-The first time a model is used, it downloads automatically from HuggingFace.
 
 ## How the provider uses dense ANN
 
@@ -75,9 +68,9 @@ If you want semantic recall but lower latency, the best paths are:
 2. Batch embeddings in the background.
 3. Run a local embedding model server.
 
-## Switching from model-free to dense
+## Switching from sparse to dense
 
-Set `embedding_model: "all-MiniLM-L6-v2"` and restart Hermes. The existing schema already has a nullable embedding column and ANN index. New memories receive embeddings; existing memories are not backfilled automatically.
+Set `retrieval_mode: dense` and `embedding_model: "all-MiniLM-L6-v2"`, then restart Hermes. The existing schema already has a nullable embedding column and ANN index. New memories receive embeddings; existing memories are not backfilled automatically.
 
 ## Dense ANN with the daemon
 
@@ -89,18 +82,19 @@ memory:
   mongreldb_hermes:
     mode: daemon
     daemon_url: http://127.0.0.1:8453
+    retrieval_mode: dense
     embedding_model: "all-MiniLM-L6-v2"
     dim: 384
 ```
 
-## When to stay model-free
+## When sparse mode fits
 
 - Most memories are well-tagged or contain exact technical terms.
 - Users ask with specific keywords.
 - Latency is critical.
 - You can add a lightweight dense model later when needed.
 
-## When to enable dense ANN
+## When dense ANN fits
 
 - Users ask vague, conversational questions.
 - Memories are long and varied in wording.
