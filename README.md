@@ -93,10 +93,20 @@ sudo ldconfig
 
 ### 3. Install the plugin
 
+Hermes loads memory providers from `plugins/memory/<name>/` (directory must
+contain `__init__.py`). Install the package tree as that directory:
+
 ```bash
 git clone https://github.com/visorcraft/MongrelDB-Hermes.git
-cp -r MongrelDB-Hermes /home/user/.hermes/hermes-agent/plugins/memory/mongreldb_hermes
-# Ensure plugin.yaml is visible to Hermes (repo root and/or package dir — see layout below)
+mkdir -p /home/user/.hermes/hermes-agent/plugins/memory
+# Copy the provider package (not the whole repo root) so __init__.py sits at the plugin root:
+cp -a MongrelDB-Hermes/mongreldb_hermes /home/user/.hermes/hermes-agent/plugins/memory/mongreldb_hermes
+```
+
+Optional dense ANN dependency:
+
+```bash
+pip install --user sentence-transformers
 ```
 
 ### 4. Configure Hermes
@@ -121,11 +131,7 @@ memory:
     daemon_binary: /path/to/mongreldb-server
 ```
 
-For dense ANN:
-
-```bash
-pip install --user sentence-transformers
-```
+Enable dense ANN in config:
 
 ```yaml
     embedding_model: "all-MiniLM-L6-v2"
