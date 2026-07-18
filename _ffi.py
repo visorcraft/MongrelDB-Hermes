@@ -32,6 +32,7 @@ MDB_COND_PK = 0
 MDB_COND_BITMAP_EQ = 1
 MDB_COND_ANN = 4
 MDB_COND_FM_CONTAINS = 5
+MDB_COND_RANGE_INT = 7
 MDB_COND_SPARSE_MATCH = 9
 MDB_COND_MIN_HASH_SIMILAR = 10
 
@@ -251,6 +252,8 @@ _lib.mongreldb_table_free.restype = None
 _lib.mongreldb_table_free.argtypes = [c_void_p]
 _lib.mongreldb_table_put.restype = c_int32
 _lib.mongreldb_table_put.argtypes = [c_void_p, POINTER(_CellInputArray), POINTER(c_uint64)]
+_lib.mongreldb_table_delete.restype = c_int32
+_lib.mongreldb_table_delete.argtypes = [c_void_p, c_uint64]
 _lib.mongreldb_query_begin.restype = c_void_p
 _lib.mongreldb_query_begin.argtypes = []
 _lib.mongreldb_query_add.restype = c_int32
@@ -531,6 +534,29 @@ class Table:
         _check(_lib.mongreldb_table_put(self._ptr, byref(arr), byref(out)), "table_put")
         return out.value
 
+    def delete(self, row_id):
+        """Delete a row by storage ``row_id`` (not the application primary key)."""
+        _check(_lib.mongreldb_table_delete(self._ptr, int(row_id)), "table_delete")
+        return True
+
+    def delete_by_pk(self, pk):
+        """Delete the row whose primary key equals ``pk`` (int64).
+
+        Returns True if a row was found and deleted, False if no matching PK.
+        Primary keys are matched via ``MDB_COND_PK`` using big-endian int64
+        key encoding (same as MongrelDB's ``Value::Int64.encode_key``).
+        """
+        key = int(pk).to_bytes(8, "big", signed=True)
+        result = self.query(
+            [{"kind": MDB_COND_PK, "bytes": key}],
+            limit=1,
+            projection=[1],
+        )
+        row_ids = result.row_ids()
+        if not row_ids:
+            return False
+        return self.delete(row_ids[0])
+
     def query(self, conditions, limit=None, projection=None, offset=0):
         q = _lib.mongreldb_query_begin()
         if not q:
@@ -646,6 +672,15 @@ class Result:
     def __len__(self):
         return self._count
 
+    def row_ids(self):
+        """Return storage row ids for every row in the result."""
+        ids = []
+        for i in range(self._count):
+            row = _Row()
+            _check(_lib.mongreldb_result_row(self._ptr, i, byref(row)), f"result_row {i}")
+            ids.append(int(row.row_id))
+        return ids
+
     def __iter__(self):
         for i in range(self._count):
             row = _Row()
@@ -667,12 +702,12 @@ def _make_condition(cond, backing):
     c.kind = cond["kind"]
     c.column_id = cond.get("column_id", 0)
     c.k = cond.get("k", 64)
-    c.int64_lo = 0
-    c.int64_hi = 0
-    c.float64_lo = 0.0
-    c.float64_hi = 0.0
-    c.lo_inclusive = 1
-    c.hi_inclusive = 1
+    c.int64_lo = int(cond.get("int64_lo", cond.get("lo", 0)))
+    c.int64_hi = int(cond.get("int64_hi", cond.get("hi", 0)))
+    c.float64_lo = float(cond.get("float64_lo", 0.0))
+    c.float64_hi = float(cond.get("float64_hi", 0.0))
+    c.lo_inclusive = 1 if cond.get("lo_inclusive", True) else 0
+    c.hi_inclusive = 1 if cond.get("hi_inclusive", True) else 0
     c.byte_values = _ByteSliceArray()
     if "pattern" in cond:
         b = cond["pattern"].encode("utf-8")

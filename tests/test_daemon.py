@@ -7,6 +7,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
+def _tool(provider, name, params):
+    result = provider.handle_tool_call(name, params)
+    return json.loads(result) if isinstance(result, str) else result
+
+
 def _load_plugin():
     try:
         import agent.memory_provider  # noqa: F401
@@ -69,6 +74,9 @@ def test_daemon_round_trip():
                     self._send({"status": "committed", "results": [{"kind": "deleted"}]})
             elif self.path == "/kit/search":
                 self._send({"hits": [] if self.row is None else [{"cells": self.row}]})
+            elif self.path == "/kit/query":
+                # Used by decay, get_by_pk, and last_accessed touch paths.
+                self._send({"rows": [] if self.row is None else [{"cells": self.row}]})
             else:
                 raise AssertionError(self.path)
 
@@ -85,15 +93,15 @@ def test_daemon_round_trip():
         provider._daemon_auth_token = "test-token"
         provider._embedder = module._Embedder("")
         provider._open_db()
-        remembered = provider.handle_tool_call(
-            "mongreldb_remember", {"content": "daemon memory", "tags": ["test"]}
+        remembered = _tool(
+            provider, "mongreldb_remember", {"content": "daemon memory", "tags": ["test"]}
         )
         assert remembered["success"]
-        assert provider.handle_tool_call(
-            "mongreldb_search", {"query": "daemon", "top_k": 5}
-        )["count"] == 1
-        assert provider.handle_tool_call(
-            "mongreldb_forget", {"memory_id": remembered["memory_id"]}
+        assert _tool(provider, "mongreldb_search", {"query": "daemon", "top_k": 5})[
+            "count"
+        ] == 1
+        assert _tool(
+            provider, "mongreldb_forget", {"memory_id": remembered["memory_id"]}
         )["success"]
     finally:
         server.shutdown()

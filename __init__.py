@@ -31,7 +31,44 @@ DEFAULT_DAEMON_URL = "http://127.0.0.1:8453"
 DEFAULT_DAEMON_BINARY = os.path.join(os.path.dirname(__file__), "vendor", "0.60.3", "mongreldb-server")
 DEFAULT_ENCRYPTION = "enabled"
 TABLE_NAME = "hermes_memories"
-RESULT_COLUMNS = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 18]
+RESULT_COLUMNS = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17, 18]
+# Near-duplicate consolidation threshold (Jaccard over topics/entities/projects/tags).
+DUP_JACCARD_THRESHOLD = 0.55
+# Content-token Jaccard below this, with high set overlap, is treated as a conflict.
+CONFLICT_CONTENT_JACCARD = 0.35
+# Recency half-life for post-search ranking (milliseconds).
+RECENCY_HALF_LIFE_MS = 14 * 24 * 60 * 60 * 1000
+# Decay: expire low-value memories not touched for this long.
+DECAY_AGE_MS = 90 * 24 * 60 * 60 * 1000
+DECAY_MAX_IMPORTANCE = 0.45
+DECAY_MAX_REINFORCEMENT = 1
+# Skip automatic writes for non-primary agent contexts (Hermes contract).
+WRITE_SKIP_CONTEXTS = frozenset({"subagent", "cron", "flush"})
+# Negation cues used for lightweight conflict detection (not NLI).
+_NEGATION_CUES = frozenset(
+    {
+        "no",
+        "not",
+        "never",
+        "dont",
+        "don't",
+        "doesnt",
+        "doesn't",
+        "isnt",
+        "isn't",
+        "wont",
+        "won't",
+        "cannot",
+        "can't",
+        "cant",
+        "without",
+        "avoid",
+        "disable",
+        "disabled",
+        "false",
+        "unlike",
+    }
+)
 
 
 def _load_ffi():
@@ -74,7 +111,8 @@ SEARCH_SCHEMA = {
     "name": "mongreldb_search",
     "description": (
         "Search long-term memory in MongrelDB. Returns memory entries ranked by "
-        "relevance (dense vector + sparse + substring)."
+        "relevance (dense vector + sparse + substring) with recency and reinforcement boosts. "
+        "Results may include conflict annotations when opposing memories are retrieved together."
     ),
     "parameters": {
         "type": "object",
@@ -118,7 +156,34 @@ FORGET_SCHEMA = {
     },
 }
 
-ALL_SCHEMAS = [SEARCH_SCHEMA, REMEMBER_SCHEMA, FORGET_SCHEMA]
+UPDATE_SCHEMA = {
+    "name": "mongreldb_update",
+    "description": (
+        "Patch an existing memory in place by numeric ID. Prefer this over writing a "
+        "new memory when a fact has changed, so the store does not accumulate parallel versions."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "memory_id": {
+                "type": "integer",
+                "description": "Numeric ID of the memory to update.",
+            },
+            "content": {
+                "type": "string",
+                "description": "Replacement text. Omit to keep the existing content.",
+            },
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Replacement tags. Omit to keep existing tags.",
+            },
+        },
+        "required": ["memory_id"],
+    },
+}
+
+ALL_SCHEMAS = [SEARCH_SCHEMA, REMEMBER_SCHEMA, FORGET_SCHEMA, UPDATE_SCHEMA]
 
 
 
@@ -207,6 +272,8 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         self._dim = 0
         self._session_id = ""
         self._user_id = "default"
+        self._agent_context = "primary"
+        self._hermes_home = ""
         self._db = None
         self._table = None
         self._lock = threading.RLock()
@@ -219,6 +286,9 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         self._passphrase: Optional[str] = None
         self._db_username: Optional[str] = None
         self._db_password: Optional[str] = None
+        # Background prefetch cache (queue_prefetch → next prefetch)
+        self._prefetch_text = ""
+        self._prefetch_thread: Optional[threading.Thread] = None
 
     @property
     def name(self) -> str:
@@ -414,12 +484,17 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         self._resolve_config(hermes_home)
         if self._mode == "native":
             os.makedirs(self._db_dir, exist_ok=True)
+        self._hermes_home = hermes_home
         self._session_id = session_id
         self._user_id = kwargs.get("user_id", "default") or "default"
+        self._agent_context = str(kwargs.get("agent_context") or "primary")
         self._embedder = _Embedder(self._embedding_model_name)
         self._open_db()
         if self._enrichment_mode == "llm":
             self._llm_client = self._make_llm_client()
+
+    def _writes_allowed(self) -> bool:
+        return self._agent_context not in WRITE_SKIP_CONTEXTS
 
     def _make_llm_client(self):
         try:
@@ -675,10 +750,131 @@ JSON:"""
             return self._extract_llm(text)
         return self._extract_heuristic(text)
 
-    def _find_duplicates(self, enriched: dict, exclude_id: int = 0) -> list[dict]:
-        return []
+    @staticmethod
+    def _member_strings(enriched: dict, tags: Optional[List[str]] = None) -> List[str]:
+        members: List[str] = []
+        for key in ("topics", "entities", "projects"):
+            members.extend(str(item) for item in (enriched.get(key) or []) if item)
+        members.extend(str(tag) for tag in (tags or []) if tag)
+        # Preserve order, drop empties/duplicates.
+        return list(dict.fromkeys(m.strip() for m in members if str(m).strip()))
 
-    def _build_row(self, memory_id: int, content: str, tags: List[str], enriched: dict, source: str) -> list:
+    @staticmethod
+    def _jaccard(left: set, right: set) -> float:
+        if not left and not right:
+            return 1.0
+        if not left or not right:
+            return 0.0
+        return len(left & right) / len(left | right)
+
+    def _row_member_set(self, row: dict) -> set:
+        members: set = set()
+        for key in ("topics", "entities", "projects", "tags"):
+            members.update(str(item) for item in (row.get(key) or []) if item)
+        return members
+
+    def _find_duplicates(
+        self,
+        enriched: dict,
+        tags: Optional[List[str]] = None,
+        exclude_id: int = 0,
+    ) -> list[dict]:
+        """Near-duplicate candidates via MinHash LSH + exact Jaccard verify."""
+        members = self._member_strings(enriched, tags)
+        if not members:
+            return []
+        query_set = set(members)
+        # Prefer the densest MinHash column that has members for this write.
+        topics = [str(t) for t in (enriched.get("topics") or []) if t]
+        tag_list = [str(t) for t in (tags or []) if t]
+        if topics:
+            column_id, query_members = 7, topics
+        elif tag_list:
+            column_id, query_members = 8, tag_list
+        else:
+            column_id, query_members = 5, members
+        query_members = query_members[:32]
+        try:
+            if self._mode == "daemon":
+                result = self._daemon_request(
+                    "POST",
+                    "/kit/search",
+                    {
+                        "table": TABLE_NAME,
+                        "must": [{"bitmap_eq": {"column_id": 16, "value": "active"}}],
+                        "retrievers": [
+                            {
+                                "name": "minhash",
+                                "weight": 1.0,
+                                "min_hash": {
+                                    "column_id": column_id,
+                                    "members": query_members,
+                                    "k": 8,
+                                },
+                            }
+                        ],
+                        "fusion": {"reciprocal_rank": {"constant": 60}},
+                        "limit": 8,
+                        "projection": RESULT_COLUMNS,
+                    },
+                )
+                rows = self._rows_from_result(
+                    [self._cells_from_http(hit["cells"]) for hit in result.get("hits") or []]
+                )
+            else:
+                ffi = _load_ffi()
+                result = self._table.search(
+                    retrievers=[
+                        {
+                            "kind": ffi.MDB_RETRIEVER_MIN_HASH,
+                            "column_id": column_id,
+                            "name": "minhash",
+                            "weight": 1.0,
+                            "k": 8,
+                            "members": query_members,
+                        }
+                    ],
+                    must=[
+                        {
+                            "kind": ffi.MDB_COND_BITMAP_EQ,
+                            "column_id": 16,
+                            "bytes": b"active",
+                        }
+                    ],
+                    fusion_kind=ffi.MDB_FUSION_RECIPROCAL_RANK,
+                    fusion_constant=60,
+                    limit=8,
+                    projection=RESULT_COLUMNS,
+                )
+                rows = self._rows_from_result(result)
+        except Exception:
+            return []
+
+        duplicates = []
+        for row in rows:
+            row_id = int(row.get("id") or 0)
+            if exclude_id and row_id == exclude_id:
+                continue
+            score = self._jaccard(query_set, self._row_member_set(row))
+            if score >= DUP_JACCARD_THRESHOLD:
+                row = dict(row)
+                row["jaccard"] = score
+                duplicates.append(row)
+        duplicates.sort(key=lambda item: (-float(item.get("jaccard", 0)), -int(item.get("id") or 0)))
+        return duplicates
+
+    def _build_row(
+        self,
+        memory_id: int,
+        content: str,
+        tags: List[str],
+        enriched: dict,
+        source: str,
+        *,
+        created_at: Optional[int] = None,
+        reinforcement_count: int = 1,
+        supersedes: Optional[List[int]] = None,
+    ) -> list:
         raw_text = content.encode("utf-8")
         summary = enriched.get("summary", content)[:500].encode("utf-8")
         memory_type = enriched.get("memory_type", "fact").encode("utf-8")
@@ -701,7 +897,9 @@ JSON:"""
         importance = int(enriched.get("importance", 0.5) * 1000)
         confidence = int(enriched.get("confidence", 0.8) * 1000)
         now = _now_ms()
+        created = int(created_at or now)
         state = b"active"
+        supersedes_json = json.dumps([int(x) for x in (supersedes or [])]).encode("utf-8")
 
         return [
             (1, memory_id),
@@ -716,18 +914,15 @@ JSON:"""
             (10, sparse_bytes),
             (11, importance),
             (12, confidence),
-            (13, now),
+            (13, created),
             (14, now),
-            (15, 1),
+            (15, int(reinforcement_count)),
             (16, state),
-            (17, b"[]"),
+            (17, supersedes_json),
             (18, metadata_json),
         ]
 
-    def _insert(self, content: str, *, tags: List[str], source: str) -> int:
-        enriched = self._extract(content)
-        memory_id = _now_ms()
-        row = self._build_row(memory_id, content, tags, enriched, source)
+    def _put_row(self, row: list, content: str, tags: List[str], enriched: dict) -> None:
         if self._mode == "daemon":
             cells = []
             for column_id, value in row:
@@ -741,7 +936,7 @@ JSON:"""
                         + " "
                         + " ".join(enriched.get("topics", []))
                     )
-                elif column_id in {5, 6, 7, 8}:
+                elif column_id in {5, 6, 7, 8, 17}:
                     value = json.loads(value)
                 elif isinstance(value, bytes):
                     value = value.decode()
@@ -753,7 +948,415 @@ JSON:"""
             )
         else:
             self._table.put(row)
+
+    def _reinforce(
+        self,
+        existing: dict,
+        content: str,
+        tags: List[str],
+        enriched: dict,
+        source: str,
+    ) -> int:
+        """Consolidate a near-duplicate into an existing memory (same PK)."""
+        memory_id = int(existing["id"])
+        old_content = str(existing.get("content") or "")
+        # Keep the richer text when consolidating.
+        if len(content.strip()) < len(old_content.strip()):
+            content = old_content
+            enriched = self._extract(content)
+        merged_tags = list(
+            dict.fromkeys([str(t) for t in (existing.get("tags") or []) if t] + [str(t) for t in tags if t])
+        )
+        for key in ("topics", "entities", "projects"):
+            merged = list(
+                dict.fromkeys(
+                    [str(x) for x in (existing.get(key) or []) if x]
+                    + [str(x) for x in (enriched.get(key) or []) if x]
+                )
+            )
+            enriched[key] = merged
+        count = int(existing.get("reinforcement_count") or 1) + 1
+        created_at = existing.get("created_at")
+        supersedes = []
+        raw_super = existing.get("supersedes")
+        if isinstance(raw_super, list):
+            supersedes = [int(x) for x in raw_super if str(x).isdigit() or isinstance(x, int)]
+        self._delete(memory_id)
+        row = self._build_row(
+            memory_id,
+            content,
+            merged_tags,
+            enriched,
+            source,
+            created_at=created_at,
+            reinforcement_count=count,
+            supersedes=supersedes,
+        )
+        self._put_row(row, content, merged_tags, enriched)
         return memory_id
+
+    @staticmethod
+    def _content_tokens(text: str) -> set:
+        return {w for w in re.findall(r"\w+", (text or "").lower()) if len(w) > 2}
+
+    def _looks_like_conflict(self, left: dict, right_content: str, right_members: set) -> bool:
+        """Heuristic contradiction: high set overlap, low content overlap, or negation flip."""
+        left_content = str(left.get("content") or left.get("summary") or "")
+        left_tokens = self._content_tokens(left_content)
+        right_tokens = self._content_tokens(right_content)
+        content_j = self._jaccard(left_tokens, right_tokens)
+        member_j = self._jaccard(self._row_member_set(left), right_members)
+        if member_j < DUP_JACCARD_THRESHOLD and content_j > 0.5:
+            return False
+        if content_j <= CONFLICT_CONTENT_JACCARD and member_j >= DUP_JACCARD_THRESHOLD:
+            return True
+        left_neg = bool(left_tokens & _NEGATION_CUES)
+        right_neg = bool(right_tokens & _NEGATION_CUES)
+        shared = left_tokens & right_tokens
+        if left_neg != right_neg and len(shared) >= 2:
+            return True
+        return False
+
+    def _get_by_pk(self, memory_id: int) -> Optional[dict]:
+        memory_id = int(memory_id)
+        if self._mode == "daemon":
+            rows = self._daemon_query(
+                [{"pk": {"value": memory_id}}],
+                1,
+            )
+            return rows[0] if rows else None
+        ffi = _load_ffi()
+        key = memory_id.to_bytes(8, "big", signed=True)
+        result = self._table.query(
+            [{"kind": ffi.MDB_COND_PK, "bytes": key}],
+            limit=1,
+            projection=RESULT_COLUMNS,
+        )
+        rows = self._rows_from_result(result)
+        return rows[0] if rows else None
+
+    def _update(
+        self,
+        memory_id: int,
+        *,
+        content: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        source: str = "update",
+        reinforce: bool = True,
+    ) -> Optional[int]:
+        """Replace fields of an existing memory in place (same primary key)."""
+        if not self._writes_allowed():
+            return None
+        existing = self._get_by_pk(memory_id)
+        if not existing:
+            return None
+        new_content = content if content is not None else str(existing.get("content") or "")
+        if not new_content.strip():
+            return None
+        new_tags = (
+            [str(t) for t in tags]
+            if tags is not None
+            else [str(t) for t in (existing.get("tags") or [])]
+        )
+        enriched = self._extract(new_content)
+        # Preserve entity/project lineage from the prior row when enrichment is sparse.
+        for key in ("entities", "projects"):
+            if not enriched.get(key) and existing.get(key):
+                enriched[key] = list(existing.get(key) or [])
+        count = int(existing.get("reinforcement_count") or 1)
+        if reinforce:
+            count += 1
+        supersedes = []
+        raw_super = existing.get("supersedes")
+        if isinstance(raw_super, list):
+            supersedes = [int(x) for x in raw_super if isinstance(x, int) or str(x).isdigit()]
+        self._delete(memory_id)
+        row = self._build_row(
+            memory_id,
+            new_content,
+            new_tags,
+            enriched,
+            source,
+            created_at=existing.get("created_at"),
+            reinforcement_count=count,
+            supersedes=supersedes,
+        )
+        self._put_row(row, new_content, new_tags, enriched)
+        return memory_id
+
+    def _insert(self, content: str, *, tags: List[str], source: str) -> int:
+        if not self._writes_allowed():
+            return 0
+        enriched = self._extract(content)
+        members = set(self._member_strings(enriched, tags))
+        duplicates = self._find_duplicates(enriched, tags=tags)
+        if duplicates:
+            best = duplicates[0]
+            if self._looks_like_conflict(best, content, members):
+                # Conflicting fact: write new memory that supersedes the old one,
+                # and demote the older row's state so search prefers the new one.
+                memory_id = _now_ms()
+                row = self._build_row(
+                    memory_id,
+                    content,
+                    tags,
+                    enriched,
+                    source,
+                    supersedes=[int(best["id"])],
+                )
+                self._put_row(row, content, tags, enriched)
+                try:
+                    self._set_state(int(best["id"]), "superseded")
+                except Exception:
+                    pass
+                return memory_id
+            return self._reinforce(best, content, tags, enriched, source)
+        memory_id = _now_ms()
+        row = self._build_row(memory_id, content, tags, enriched, source)
+        self._put_row(row, content, tags, enriched)
+        return memory_id
+
+    def _set_state(self, memory_id: int, state: str) -> bool:
+        """Rewrite a row with a new lifecycle state (active/superseded/expired)."""
+        existing = self._get_by_pk(memory_id)
+        if not existing:
+            return False
+        content = str(existing.get("content") or "")
+        tags = [str(t) for t in (existing.get("tags") or [])]
+        enriched = {
+            "summary": existing.get("summary") or content[:200],
+            "memory_type": existing.get("memory_type") or "fact",
+            "entities": existing.get("entities") or [],
+            "projects": existing.get("projects") or [],
+            "topics": existing.get("topics") or [],
+            "importance": existing.get("importance", 0.5),
+            "confidence": existing.get("confidence", 0.8),
+        }
+        supersedes = existing.get("supersedes") if isinstance(existing.get("supersedes"), list) else []
+        source = "state"
+        meta = existing.get("metadata") if isinstance(existing.get("metadata"), dict) else {}
+        if isinstance(meta, dict) and meta.get("source"):
+            source = str(meta.get("source"))
+        self._delete(memory_id)
+        row = self._build_row(
+            memory_id,
+            content,
+            tags,
+            enriched,
+            source,
+            created_at=existing.get("created_at"),
+            reinforcement_count=int(existing.get("reinforcement_count") or 1),
+            supersedes=[int(x) for x in supersedes if isinstance(x, int) or str(x).isdigit()],
+        )
+        # Patch state cell (column 16).
+        row = [(col, (state.encode("utf-8") if col == 16 else val)) for col, val in row]
+        # Keep prior last_accessed unless activating.
+        if state != "active" and existing.get("last_accessed_at"):
+            row = [
+                (col, (int(existing["last_accessed_at"]) if col == 14 else val))
+                for col, val in row
+            ]
+        self._put_row(row, content, tags, enriched)
+        return True
+
+    def _delete(self, memory_id: int) -> bool:
+        """Delete one memory by primary key. Returns True if a row was removed."""
+        if self._mode == "daemon":
+            result = self._daemon_request(
+                "POST",
+                "/kit/txn",
+                {"ops": [{"delete_by_pk": {"table": TABLE_NAME, "pk": memory_id}}]},
+            )
+            results = result.get("results") or []
+            if not results:
+                return False
+            return results[0].get("kind") == "deleted"
+        return bool(self._table.delete_by_pk(memory_id))
+
+    def _delete_matching_content(self, content: str) -> int:
+        """Delete active memories whose content or summary equals ``content``."""
+        if not content:
+            return 0
+        needle = content.strip()
+        matches = self._search(needle, top_k=20, apply_decay=False, touch=False)
+        deleted = 0
+        for row in matches:
+            body = str(row.get("content") or "").strip()
+            summary = str(row.get("summary") or "").strip()
+            if body == needle or summary == needle or needle in body:
+                if row.get("id") is not None and self._delete(int(row["id"])):
+                    deleted += 1
+        return deleted
+
+    def _rank_with_recency(self, rows: List[dict]) -> List[dict]:
+        """Blend retrieval order with recency, reinforcement, and importance.
+
+        MongrelDB already stores created_at / last_accessed_at (range-indexed).
+        Hybrid search fuses ANN + sparse only; this post-sort uses those
+        timestamps as an additional ranking signal.
+        """
+        if not rows:
+            return rows
+        now = _now_ms()
+        ranked = []
+        for index, row in enumerate(rows):
+            item = dict(row)
+            position = 1.0 / (60.0 + index + 1.0)
+            ts = int(item.get("last_accessed_at") or item.get("created_at") or 0)
+            age = max(0, now - ts) if ts else RECENCY_HALF_LIFE_MS * 4
+            recency = 0.5 ** (age / float(RECENCY_HALF_LIFE_MS))
+            reinf = min(int(item.get("reinforcement_count") or 1), 20) / 20.0
+            importance = float(item.get("importance") or 0.5)
+            # Soft penalty when the row is annotated as conflicting with another hit.
+            conflict_penalty = 0.15 if item.get("conflicts_with") else 0.0
+            score = (
+                0.50 * position
+                + 0.30 * recency
+                + 0.12 * reinf
+                + 0.08 * importance
+                - conflict_penalty
+            )
+            item["score"] = score
+            item["recency"] = recency
+            ranked.append(item)
+        ranked.sort(key=lambda r: (-float(r.get("score") or 0), -int(r.get("id") or 0)))
+        return ranked
+
+    def _annotate_conflicts(self, rows: List[dict]) -> List[dict]:
+        """Mark pairs in a result set that look contradictory."""
+        if len(rows) < 2:
+            return rows
+        annotated = [dict(r) for r in rows]
+        for i in range(len(annotated)):
+            for j in range(i + 1, len(annotated)):
+                a, b = annotated[i], annotated[j]
+                if self._looks_like_conflict(
+                    a, str(b.get("content") or ""), self._row_member_set(b)
+                ):
+                    a.setdefault("conflicts_with", [])
+                    b.setdefault("conflicts_with", [])
+                    if b.get("id") is not None and int(b["id"]) not in a["conflicts_with"]:
+                        a["conflicts_with"].append(int(b["id"]))
+                    if a.get("id") is not None and int(a["id"]) not in b["conflicts_with"]:
+                        b["conflicts_with"].append(int(a["id"]))
+        return annotated
+
+    def _touch_last_accessed(self, rows: List[dict]) -> None:
+        """Bump last_accessed_at for retrieved active rows (feeds recency)."""
+        if not rows or not self._writes_allowed():
+            return
+        now = _now_ms()
+        for row in rows[:5]:
+            memory_id = row.get("id")
+            if memory_id is None:
+                continue
+            try:
+                existing = self._get_by_pk(int(memory_id))
+                if not existing or existing.get("state", "active") != "active":
+                    continue
+                content = str(existing.get("content") or "")
+                tags = [str(t) for t in (existing.get("tags") or [])]
+                enriched = {
+                    "summary": existing.get("summary") or content[:200],
+                    "memory_type": existing.get("memory_type") or "fact",
+                    "entities": existing.get("entities") or [],
+                    "projects": existing.get("projects") or [],
+                    "topics": existing.get("topics") or [],
+                    "importance": existing.get("importance", 0.5),
+                    "confidence": existing.get("confidence", 0.8),
+                }
+                supersedes = (
+                    existing.get("supersedes")
+                    if isinstance(existing.get("supersedes"), list)
+                    else []
+                )
+                source = "touch"
+                meta = existing.get("metadata") if isinstance(existing.get("metadata"), dict) else {}
+                if isinstance(meta, dict) and meta.get("source"):
+                    source = str(meta.get("source"))
+                self._delete(int(memory_id))
+                row_cells = self._build_row(
+                    int(memory_id),
+                    content,
+                    tags,
+                    enriched,
+                    source,
+                    created_at=existing.get("created_at"),
+                    reinforcement_count=int(existing.get("reinforcement_count") or 1),
+                    supersedes=[
+                        int(x)
+                        for x in supersedes
+                        if isinstance(x, int) or str(x).isdigit()
+                    ],
+                )
+                # Force last_accessed_at = now (column 14).
+                row_cells = [(c, (now if c == 14 else v)) for c, v in row_cells]
+                self._put_row(row_cells, content, tags, enriched)
+            except Exception:
+                continue
+
+    def _expire_stale_memories(self, limit: int = 32) -> int:
+        """Mark low-importance, never-reinforced, long-untouched memories expired."""
+        if not self._writes_allowed():
+            return 0
+        cutoff = _now_ms() - DECAY_AGE_MS
+        try:
+            if self._mode == "daemon":
+                candidates = self._daemon_query(
+                    [
+                        {"bitmap_eq": {"column_id": 16, "value": "active"}},
+                        {"range": {"column_id": 14, "lo": 0, "hi": cutoff}},
+                    ],
+                    limit,
+                )
+            else:
+                ffi = _load_ffi()
+                result = self._table.query(
+                    [
+                        {
+                            "kind": ffi.MDB_COND_BITMAP_EQ,
+                            "column_id": 16,
+                            "bytes": b"active",
+                        },
+                        {
+                            "kind": ffi.MDB_COND_RANGE_INT,
+                            "column_id": 14,
+                            "lo": 0,
+                            "hi": cutoff,
+                        },
+                    ],
+                    limit=limit,
+                    projection=RESULT_COLUMNS,
+                )
+                candidates = self._rows_from_result(result)
+        except Exception:
+            return 0
+        expired = 0
+        for row in candidates:
+            importance = float(row.get("importance") or 0.5)
+            reinf = int(row.get("reinforcement_count") or 1)
+            if importance > DECAY_MAX_IMPORTANCE or reinf > DECAY_MAX_REINFORCEMENT:
+                continue
+            if row.get("id") is not None and self._set_state(int(row["id"]), "expired"):
+                expired += 1
+        return expired
+
+    def _finalize_results(
+        self,
+        rows: List[dict],
+        top_k: int,
+        *,
+        touch: bool = True,
+    ) -> List[dict]:
+        rows = self._annotate_conflicts(rows)
+        rows = self._rank_with_recency(rows)
+        rows = rows[:top_k]
+        if touch:
+            try:
+                self._touch_last_accessed(rows)
+            except Exception:
+                pass
+        return rows
 
     def _daemon_query(self, conditions: List[dict], top_k: int) -> List[dict]:
         result = self._daemon_request(
@@ -776,6 +1379,10 @@ JSON:"""
         top_k: int,
         memory_type: Optional[str],
         state: str,
+        project: Optional[str] = None,
+        entity: Optional[str] = None,
+        *,
+        touch: bool = True,
     ) -> List[dict]:
         embedding = self._embedder.encode(query) if self._embedder else []
         sparse = _sparse_tokens(query)
@@ -802,16 +1409,20 @@ JSON:"""
                     "sparse": {"column_id": 10, "query": sparse, "k": candidate_k},
                 }
             )
+        # Overfetch so recency re-rank can promote newer hits that landed lower.
+        fetch_k = max(top_k * 4, 16)
         if not retrievers:
-            return self._daemon_query(
-                must + [{"fm_contains": {"column_id": 2, "pattern": query}}], top_k
+            rows = self._daemon_query(
+                must + [{"fm_contains": {"column_id": 2, "pattern": query}}], fetch_k
             )
+            rows = self._filter_project_entity(rows, project, entity)
+            return self._finalize_results(rows, top_k, touch=touch)
         payload = {
             "table": TABLE_NAME,
             "must": must,
             "retrievers": retrievers,
             "fusion": {"reciprocal_rank": {"constant": 60}},
-            "limit": top_k,
+            "limit": fetch_k,
             "projection": RESULT_COLUMNS,
         }
         if embedding and len(embedding) == self._dim:
@@ -833,17 +1444,41 @@ JSON:"""
                 try:
                     result = self._daemon_request("POST", "/kit/search", payload)
                 except RuntimeError:
-                    return self._daemon_query(
+                    rows = self._daemon_query(
                         must + [{"fm_contains": {"column_id": 2, "pattern": query}}],
-                        top_k,
+                        fetch_k,
                     )
+                    rows = self._filter_project_entity(rows, project, entity)
+                    return self._finalize_results(rows, top_k, touch=touch)
             else:
-                return self._daemon_query(
-                    must + [{"fm_contains": {"column_id": 2, "pattern": query}}], top_k
+                rows = self._daemon_query(
+                    must + [{"fm_contains": {"column_id": 2, "pattern": query}}], fetch_k
                 )
-        return self._rows_from_result(
+                rows = self._filter_project_entity(rows, project, entity)
+                return self._finalize_results(rows, top_k, touch=touch)
+        rows = self._rows_from_result(
             [self._cells_from_http(hit["cells"]) for hit in result["hits"]]
         )
+        rows = self._filter_project_entity(rows, project, entity)
+        return self._finalize_results(rows, top_k, touch=touch)
+
+    @staticmethod
+    def _filter_project_entity(
+        rows: List[dict],
+        project: Optional[str],
+        entity: Optional[str],
+    ) -> List[dict]:
+        """Hard membership filter after retrieval (exact set contains)."""
+        if not project and not entity:
+            return rows
+        filtered = []
+        for row in rows:
+            if project and project not in [str(x) for x in (row.get("projects") or [])]:
+                continue
+            if entity and entity not in [str(x) for x in (row.get("entities") or [])]:
+                continue
+            filtered.append(row)
+        return filtered
 
     @staticmethod
     def _cells_from_http(cells: List[Any]) -> Dict[int, Any]:
@@ -857,13 +1492,31 @@ JSON:"""
         project: Optional[str] = None,
         entity: Optional[str] = None,
         state: str = "active",
+        *,
+        apply_decay: bool = True,
+        touch: bool = True,
     ) -> List[dict]:
+        if apply_decay:
+            try:
+                self._expire_stale_memories()
+            except Exception:
+                pass
         if self._mode == "daemon":
-            return self._search_daemon(query, top_k, memory_type, state)
+            return self._search_daemon(
+                query,
+                top_k,
+                memory_type,
+                state,
+                project=project,
+                entity=entity,
+                touch=touch,
+            )
         ffi = _load_ffi()
         embedding = self._embedder.encode(query) if self._embedder else []
         sparse = _sparse_tokens(query)
         candidate_k = max(top_k * 8, 64)
+        # Overfetch so recency re-rank can promote newer hits that landed lower.
+        fetch_k = max(top_k * 4, 16)
 
         must = []
         if state:
@@ -892,8 +1545,11 @@ JSON:"""
             })
         if not retrievers:
             must.append({"kind": ffi.MDB_COND_FM_CONTAINS, "column_id": 2, "pattern": query})
-            result = self._table.query(must, limit=top_k, projection=RESULT_COLUMNS)
-            return self._rows_from_result(result)
+            result = self._table.query(must, limit=fetch_k, projection=RESULT_COLUMNS)
+            rows = self._filter_project_entity(
+                self._rows_from_result(result), project, entity
+            )
+            return self._finalize_results(rows, top_k, touch=touch)
 
         rerank = None
         if embedding and len(embedding) == self._dim:
@@ -912,10 +1568,13 @@ JSON:"""
                 fusion_kind=ffi.MDB_FUSION_RECIPROCAL_RANK,
                 fusion_constant=60,
                 rerank=rerank,
-                limit=top_k,
+                limit=fetch_k,
                 projection=RESULT_COLUMNS,
             )
-            return self._rows_from_result(result)
+            rows = self._filter_project_entity(
+                self._rows_from_result(result), project, entity
+            )
+            return self._finalize_results(rows, top_k, touch=touch)
         except Exception:
             # Fall back when ANN is missing from an older empty checkpoint, or
             # embeddings were never written: sparse-only, then FM contains.
@@ -934,20 +1593,26 @@ JSON:"""
                         fusion_kind=ffi.MDB_FUSION_RECIPROCAL_RANK,
                         fusion_constant=60,
                         rerank=None,
-                        limit=top_k,
+                        limit=fetch_k,
                         projection=RESULT_COLUMNS,
                     )
-                    return self._rows_from_result(result)
+                    rows = self._filter_project_entity(
+                        self._rows_from_result(result), project, entity
+                    )
+                    return self._finalize_results(rows, top_k, touch=touch)
                 except Exception:
                     pass
             must_fm = list(must)
             must_fm.append({"kind": ffi.MDB_COND_FM_CONTAINS, "column_id": 2, "pattern": query})
             result = self._table.query(
                 must_fm,
-                limit=top_k,
+                limit=fetch_k,
                 projection=RESULT_COLUMNS,
             )
-            return self._rows_from_result(result)
+            rows = self._filter_project_entity(
+                self._rows_from_result(result), project, entity
+            )
+            return self._finalize_results(rows, top_k, touch=touch)
 
     def _rows_from_result(self, result) -> List[dict]:
         rows = []
@@ -980,6 +1645,13 @@ JSON:"""
                     row["reinforcement_count"] = int(value)
                 elif col_id == 16:
                     row["state"] = value.decode("utf-8") if isinstance(value, bytes) else value
+                elif col_id == 17:
+                    try:
+                        row["supersedes"] = json.loads(
+                            value.decode() if isinstance(value, bytes) else value
+                        )
+                    except Exception:
+                        row["supersedes"] = value
                 elif col_id == 18:
                     try:
                         row["metadata"] = json.loads(value.decode() if isinstance(value, bytes) else value)
@@ -991,61 +1663,117 @@ JSON:"""
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
         return list(ALL_SCHEMAS)
 
-    def handle_tool_call(self, tool_name: str, params: dict, **kwargs) -> Any:
+    def handle_tool_call(self, tool_name: str, params: dict, **kwargs) -> str:
+        # Hermes MemoryProvider contract: tool results are JSON strings.
         if tool_name == "mongreldb_search":
             query = params.get("query", "")
-            top_k = int(params.get("top_k", 8))
+            top_k = min(int(params.get("top_k", 8) or 8), 20)
             memory_type = params.get("memory_type")
             project = params.get("project")
             entity = params.get("entity")
-            results = self._search(query, top_k=top_k, memory_type=memory_type, project=project, entity=entity)
-            return {"results": results, "count": len(results)}
+            results = self._search(
+                query,
+                top_k=top_k,
+                memory_type=memory_type,
+                project=project,
+                entity=entity,
+            )
+            return json.dumps({"results": results, "count": len(results)})
 
         if tool_name == "mongreldb_remember":
             content = params.get("content", "")
             tags = params.get("tags", []) or []
             if not content:
-                return {"error": "content is required"}
+                return json.dumps({"error": "content is required"})
             source = params.get("source", "tool")
             memory_id = self._insert(content, tags=tags, source=source)
-            return {"success": True, "memory_id": memory_id}
+            return json.dumps({"success": True, "memory_id": memory_id})
 
         if tool_name == "mongreldb_forget":
             memory_id = params.get("memory_id")
             if memory_id is None:
-                return {"error": "memory_id is required"}
-            if self._mode == "daemon":
-                result = self._daemon_request(
-                    "POST",
-                    "/kit/txn",
-                    {"ops": [{"delete_by_pk": {"table": TABLE_NAME, "pk": memory_id}}]},
-                )
-                deleted = result["results"][0]["kind"] == "deleted"
-                return {"success": deleted, "memory_id": memory_id}
-            return {"error": "delete not implemented in embedded FFI provider"}
+                return json.dumps({"error": "memory_id is required"})
+            try:
+                memory_id = int(memory_id)
+            except (TypeError, ValueError):
+                return json.dumps({"error": "memory_id must be an integer"})
+            deleted = self._delete(memory_id)
+            return json.dumps({"success": deleted, "memory_id": memory_id})
 
-        return {"error": f"Unknown tool: {tool_name}"}
+        if tool_name == "mongreldb_update":
+            memory_id = params.get("memory_id")
+            if memory_id is None:
+                return json.dumps({"error": "memory_id is required"})
+            try:
+                memory_id = int(memory_id)
+            except (TypeError, ValueError):
+                return json.dumps({"error": "memory_id must be an integer"})
+            content = params.get("content")
+            tags = params.get("tags")
+            if content is None and tags is None:
+                return json.dumps({"error": "content or tags is required"})
+            updated = self._update(
+                memory_id,
+                content=content,
+                tags=tags,
+                source="tool",
+            )
+            if updated is None:
+                return json.dumps({"success": False, "memory_id": memory_id, "error": "not found"})
+            return json.dumps({"success": True, "memory_id": updated})
+
+        return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
     def system_prompt_block(self) -> str:
         location = self._daemon_url if self._mode == "daemon" else self._db_dir
         return (
             "# MongrelDB Memory\n"
-            f"Active in {self._mode} mode at {location}. Dense ANN + sparse + MinHash + bitmap + range + FM.\n"
-            "Use mongreldb_search to recall facts, mongreldb_remember to store facts, "
-            "and mongreldb_forget to delete a memory by ID."
+            f"Active in {self._mode} mode at {location}. "
+            "Dense ANN + sparse + MinHash + bitmap + range indexes + recency ranking.\n"
+            "Use mongreldb_search to recall facts (results may include conflicts_with annotations), "
+            "mongreldb_remember to store facts, mongreldb_update to patch an existing memory by ID, "
+            "and mongreldb_forget to delete a memory by ID. Prefer update over writing a parallel fact."
         )
 
-    def prefetch(self, query: str, *, session_id: str = "") -> str:
-        try:
-            results = self._search(query, top_k=5)
-            if not results:
-                return ""
-            lines = ["[MongrelDB Memory]"]
-            for r in results:
-                lines.append(f"- {r.get('summary', r.get('content', ''))}")
-            return "\n".join(lines)
-        except Exception as e:
+    def _format_prefetch(self, results: List[dict]) -> str:
+        if not results:
             return ""
+        lines = ["[MongrelDB Memory]"]
+        for row in results:
+            lines.append(f"- {row.get('summary', row.get('content', ''))}")
+        return "\n".join(lines)
+
+    def prefetch(self, query: str, *, session_id: str = "") -> str:
+        with self._lock:
+            cached = self._prefetch_text
+            self._prefetch_text = ""
+        if cached:
+            return cached
+        try:
+            return self._format_prefetch(self._search(query, top_k=5))
+        except Exception:
+            return ""
+
+    def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
+        """Background recall for the next turn's prefetch()."""
+        if not query or not query.strip():
+            return
+        if self._prefetch_thread and self._prefetch_thread.is_alive():
+            self._prefetch_thread.join(timeout=0.5)
+
+        def _run():
+            try:
+                text = self._format_prefetch(self._search(query, top_k=5))
+                with self._lock:
+                    self._prefetch_text = text
+            except Exception:
+                pass
+
+        thread = threading.Thread(
+            target=_run, daemon=True, name="mongreldb-prefetch"
+        )
+        self._prefetch_thread = thread
+        thread.start()
 
     def on_memory_write(
         self,
@@ -1054,9 +1782,20 @@ JSON:"""
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
+        if not self._writes_allowed():
+            return
+        metadata = metadata or {}
         try:
-            if action != "remove":
-                self._insert(content, tags=[target], source="memory_tool")
+            if action == "remove":
+                self._delete_matching_content(content or str(metadata.get("old_text") or ""))
+                return
+            if action == "replace":
+                old_text = str(metadata.get("old_text") or "")
+                if old_text:
+                    self._delete_matching_content(old_text)
+            if action in {"add", "replace"} and content:
+                tags = [target] if target else []
+                self._insert(content, tags=tags, source="memory_tool")
         except Exception:
             pass
 
@@ -1069,6 +1808,8 @@ JSON:"""
         messages=None,
     ) -> None:
         """Persist a completed turn (Hermes MemoryProvider contract)."""
+        if not self._writes_allowed():
+            return
         try:
             content = f"User: {user_content}\nAssistant: {assistant_content}"
             tags = ["turn", session_id or self._session_id]
@@ -1076,12 +1817,141 @@ JSON:"""
         except Exception:
             pass
 
+    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+        """Heuristic extraction of sticky facts from the closing transcript."""
+        if not self._writes_allowed() or not messages:
+            return
+        try:
+            self._expire_stale_memories()
+        except Exception:
+            pass
+        preference = re.compile(
+            r"\bI\s+(?:prefer|like|love|use|want|need|always|never|usually)\s+(.+)",
+            re.IGNORECASE,
+        )
+        decision = re.compile(
+            r"\b(?:we|let's|lets)\s+(?:decided|agreed|chose|should|will)\s+(?:to\s+)?(.+)",
+            re.IGNORECASE,
+        )
+        seen: set = set()
+        for message in messages[-40:]:
+            if message.get("role") != "user":
+                continue
+            content = message.get("content") or ""
+            if not isinstance(content, str) or not content.strip():
+                continue
+            for pattern, memory_type in ((preference, "preference"), (decision, "decision")):
+                match = pattern.search(content)
+                if not match:
+                    continue
+                fact = content.strip()
+                if len(fact) < 12 or fact in seen:
+                    continue
+                seen.add(fact)
+                try:
+                    # Force type via tags; enrichment still runs.
+                    self._insert(
+                        fact,
+                        tags=["session_end", memory_type, self._session_id or ""],
+                        source="session_end",
+                    )
+                except Exception:
+                    pass
+
+    def on_session_switch(
+        self,
+        new_session_id: str,
+        *,
+        parent_session_id: str = "",
+        reset: bool = False,
+        rewound: bool = False,
+        **kwargs,
+    ) -> None:
+        self._session_id = new_session_id or self._session_id
+        if reset or rewound:
+            with self._lock:
+                self._prefetch_text = ""
+
+    def on_delegation(
+        self,
+        task: str,
+        result: str,
+        *,
+        child_session_id: str = "",
+        **kwargs,
+    ) -> None:
+        if not self._writes_allowed():
+            return
+        task = (task or "").strip()
+        result = (result or "").strip()
+        if not task and not result:
+            return
+        content = f"Delegated: {task[:500]}\nResult: {result[:1000]}"
+        try:
+            self._insert(
+                content,
+                tags=["delegation", child_session_id or "", self._session_id or ""],
+                source="delegation",
+            )
+        except Exception:
+            pass
+
+    def on_pre_compress(self, messages: List[Dict[str, Any]]) -> str:
+        """Surface top recalled lines so the compressor can keep them."""
+        if not messages:
+            return ""
+        snippets = []
+        for message in messages[-12:]:
+            role = message.get("role")
+            content = message.get("content")
+            if role not in {"user", "assistant"} or not isinstance(content, str):
+                continue
+            text = content.strip()
+            if text:
+                snippets.append(text[:240])
+        if not snippets:
+            return ""
+        query = " ".join(snippets)[:500]
+        try:
+            results = self._search(query, top_k=5)
+        except Exception:
+            return ""
+        if not results:
+            return ""
+        lines = ["MongrelDB memories relevant to discarded context:"]
+        for row in results:
+            lines.append(f"- {row.get('summary', row.get('content', ''))}")
+        return "\n".join(lines)
+
+    def backup_paths(self) -> List[str]:
+        """Declare data/key paths when they live outside HERMES_HOME."""
+        paths = []
+        home = os.path.expanduser(self._hermes_home or os.environ.get("HERMES_HOME") or "")
+        for path in (self._db_dir, self._daemon_data_dir):
+            if not path:
+                continue
+            abs_path = os.path.abspath(os.path.expanduser(path))
+            if home and abs_path.startswith(os.path.abspath(home) + os.sep):
+                continue
+            paths.append(abs_path)
+        key_path = os.path.join(
+            os.path.expanduser(home or "~/.hermes"), "mongreldb_hermes.key"
+        )
+        if home:
+            key_abs = os.path.abspath(key_path)
+            if not key_abs.startswith(os.path.abspath(home) + os.sep):
+                paths.append(key_abs)
+        return paths
+
     def shutdown(self) -> None:
+        if self._prefetch_thread and self._prefetch_thread.is_alive():
+            self._prefetch_thread.join(timeout=2.0)
         with self._lock:
             if self._mode == "native" and self._db is not None:
                 self._db.close()
             self._db = None
             self._table = None
+            self._prefetch_text = ""
 
 
 def register(ctx) -> None:

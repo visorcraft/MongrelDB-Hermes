@@ -1,5 +1,5 @@
 name: mongreldb_hermes
-version: 1.0.4
+version: 1.0.5
 kind: exclusive
 description: "MongrelDB-backed long-term memory for Hermes. Supports native FFI and HTTP daemon modes, with dense ANN by default and sparse opt-out."
 author: Visorcraft
