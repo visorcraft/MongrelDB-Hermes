@@ -6,16 +6,21 @@ This guide covers installing the `mongreldb-hermes` plugin and its MongrelDB bin
 
 ```bash
 hermes plugins install visorcraft/MongrelDB-Hermes --no-enable
+```
+
+If Hermes asks whether to enable the plugin, answer `n`. Ignore its generic `hermes plugins enable mongreldb_hermes` and `hermes gateway restart` instructions. After the installer returns to the shell, run:
+
+```bash
 hermes memory setup
 ```
 
-Select `mongreldb_hermes` in memory setup. The plugin is an exclusive memory provider. Ignore Hermes' generic `hermes plugins enable mongreldb_hermes` message; memory setup selects, configures, and activates it.
+Select `mongreldb_hermes`, listed as `local`. No API key is required. Memory setup selects, configures, and activates it as the exclusive memory provider.
 
-Saving memory setup downloads both MongrelDB 0.60.2 runtime files for the current platform. If setup is skipped, first provider startup performs the same install. Downloads are SHA-256 verified and deleted after extraction. Only these files remain:
+Saving memory setup downloads both MongrelDB 0.60.3 runtime files for the current platform. If setup is skipped, first provider startup performs the same install. Downloads are SHA-256 verified and deleted after extraction. Only these files remain:
 
 ```
-vendor/0.60.2/libmongreldb.so
-vendor/0.60.2/mongreldb-server
+vendor/0.60.3/libmongreldb.so
+vendor/0.60.3/mongreldb-server
 ```
 
 macOS uses `libmongreldb.dylib` instead. Both files are installed even when native mode is selected, so changing modes requires no later download.
@@ -29,7 +34,7 @@ Directory layout after install:
 ├── after-install.md
 ├── install_mongreldb.py
 ├── plugin.yaml
-├── vendor/0.60.2/
+├── vendor/0.60.3/
 ├── README.md
 ├── MongrelDB_setup.md
 ├── MongrelDB_modes.md
@@ -94,9 +99,9 @@ If `embedding_model` is set, the embedding model is the bottleneck. Set it to `"
 ```bash
 # Stop Hermes, then start the daemon manually
 export MONGRELDB_PASSPHRASE="$(cat ~/.hermes/mongreldb_hermes.key)"
-/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.2/mongreldb-server \
+/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.3/mongreldb-server \
     /home/user/.hermes/mongreldb_hermes_data \
-    8453 \
+    --port 8453 \
     --passphrase "$MONGRELDB_PASSPHRASE" \
     --daemon \
     --pidfile /tmp/mongreldb-hermes.pid
@@ -113,11 +118,11 @@ memory:
     daemon_url: http://127.0.0.1:8453
     daemon_data_dir: /home/user/.hermes/mongreldb_hermes_data
     daemon_pidfile: /tmp/mongreldb-hermes.pid
-    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.2/mongreldb-server
+    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.3/mongreldb-server
 ```
 
 Restart Hermes.
 
 ## 6. Rebuilding after a MongrelDB upgrade
 
-MongrelDB's C ABI is still evolving. This plugin targets MongrelDB 0.60.2. Update `_ffi.py` against the new `mongreldb.h` before changing that requirement.
+MongrelDB's C ABI is still evolving. This plugin targets MongrelDB 0.60.3 and MongrelDB Kit 0.60.3. Update `_ffi.py` against the new `mongreldb.h` before changing either requirement.

@@ -30,6 +30,9 @@ def _load_plugin(config):
     hermes_config.cfg_get = cfg_get
     sys.modules["hermes_cli"] = hermes_cli
     sys.modules["hermes_cli.config"] = hermes_config
+    hermes_constants = types.ModuleType("hermes_constants")
+    hermes_constants.get_hermes_home = lambda: Path("/tmp/.hermes")
+    sys.modules["hermes_constants"] = hermes_constants
 
     root = Path(__file__).parents[1]
     spec = importlib.util.spec_from_file_location(
@@ -55,6 +58,9 @@ def test_encryption_defaults_on_and_can_be_disabled():
             assert provider._encryption == "enabled"
             assert provider._passphrase
             assert (Path(temp_name) / "mongreldb_hermes.key").is_file()
+            schema = provider.get_config_schema()
+            assert schema
+            assert not any(field.get("secret") for field in schema)
 
             module = _load_plugin(
                 {"memory": {"mongreldb_hermes": {"encryption": "disabled"}}}

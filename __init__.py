@@ -26,7 +26,7 @@ DEFAULT_DB_DIR = ""
 DEFAULT_EMBEDDING_MODEL = ""
 DEFAULT_DIM = 384
 DEFAULT_DAEMON_URL = "http://127.0.0.1:8453"
-DEFAULT_DAEMON_BINARY = os.path.join(os.path.dirname(__file__), "vendor", "0.60.2", "mongreldb-server")
+DEFAULT_DAEMON_BINARY = os.path.join(os.path.dirname(__file__), "vendor", "0.60.3", "mongreldb-server")
 DEFAULT_ENCRYPTION = "enabled"
 TABLE_NAME = "hermes_memories"
 RESULT_COLUMNS = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 18]
@@ -320,10 +320,6 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             {"key": "daemon_binary", "description": "mongreldb-server path", "default": DEFAULT_DAEMON_BINARY, "when": {"mode": "daemon"}},
             {"key": "daemon_pidfile", "description": "Daemon PID file", "default": self._daemon_pidfile, "when": {"mode": "daemon"}},
             {"key": "daemon_log", "description": "Daemon startup log", "default": self._daemon_log, "when": {"mode": "daemon"}},
-            {"key": "daemon_auth_token", "description": "Optional daemon Bearer token", "secret": True, "env_var": "MONGRELDB_DAEMON_AUTH_TOKEN", "when": {"mode": "daemon"}},
-            {"key": "passphrase", "description": "Encryption passphrase (blank = generate securely)", "secret": True, "env_var": "MONGRELDB_PASSPHRASE", "when": {"encryption": "enabled"}},
-            {"key": "username", "description": "Optional DB username (with password; prefer MONGRELDB_DB_USERNAME)", "default": ""},
-            {"key": "password", "description": "Optional DB password", "secret": True, "env_var": "MONGRELDB_DB_PASSWORD"},
         ]
 
     def save_config(self, values: Dict[str, Any], hermes_home: str) -> None:

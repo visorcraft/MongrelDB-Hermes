@@ -66,7 +66,7 @@ memory:
     daemon_data_dir: /home/user/.hermes/mongreldb_hermes_data
     daemon_pidfile: /tmp/mongreldb-hermes.pid
     daemon_log: /tmp/mongreldb-hermes.log
-    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.2/mongreldb-server
+    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.3/mongreldb-server
     embedding_model: ""
     dim: 384
 ```
@@ -75,9 +75,9 @@ memory:
 
 ```bash
 export MONGRELDB_PASSPHRASE="$(cat ~/.hermes/mongreldb_hermes.key)"
-/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.2/mongreldb-server \
+/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.3/mongreldb-server \
     /home/user/.hermes/mongreldb_hermes_data \
-    8453 \
+    --port 8453 \
     --passphrase "$MONGRELDB_PASSPHRASE" \
     --daemon \
     --pidfile /tmp/mongreldb-hermes.pid
@@ -105,7 +105,7 @@ The provider uses the typed `/kit/create_table`, `/kit/txn`, `/kit/query`, and `
 
 ## Pluggable embedding providers on the daemon
 
-MongrelDB 0.60.2 introduced a pluggable embedding layer. The daemon can register local or remote embedding providers, so the server itself can compute vectors rather than requiring the client to supply them. This is useful if you want to centralize model management in the daemon.
+MongrelDB includes a pluggable embedding layer. The daemon can register local or remote embedding providers, so the server itself can compute vectors rather than requiring the client to supply them. This is useful if you want to centralize model management in the daemon.
 
 For the `mongreldb-hermes` provider, the default behavior is still client-supplied vectors: the provider computes embeddings locally with `sentence-transformers` and sends them to the daemon. If you want to use a daemon-registered provider instead, you would configure the `hermes_memories` table with an `EmbeddingSource::GeneratedColumn` source and leave the embedding column empty on insert. That path is not yet wired in the plugin.
 

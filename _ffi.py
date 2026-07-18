@@ -13,7 +13,7 @@ class MongrelDBError(Exception):
     pass
 
 _library_name = "libmongreldb.dylib" if sys.platform == "darwin" else "libmongreldb.so"
-_bundled_library = os.path.join(os.path.dirname(__file__), "vendor", "0.60.2", _library_name)
+_bundled_library = os.path.join(os.path.dirname(__file__), "vendor", "0.60.3", _library_name)
 LIB_PATH = os.environ.get("MONGRELDB_LIB") or (_bundled_library if os.path.isfile(_bundled_library) else None) or find_library("mongreldb") or _library_name
 _lib = ctypes.CDLL(LIB_PATH)
 
