@@ -29,8 +29,11 @@ Hermes memory needs more than a plain vector store. Useful long-term memory for 
 - Filter by memory type, project, entity, state, and time.
 - Detect near-duplicate memories so the store does not grow forever.
 - Return results fast enough that the agent still feels responsive.
+- Keep agent memories **encrypted at rest** when the host disk or backups are not fully trusted.
 
 MongrelDB is built around multiple AI-native indexes in one engine, so a single query can combine all of these signals. Most alternatives only provide dense vector search; frameworks like Mem0 compose several separate databases to approximate the same thing.
+
+**Encryption at rest** is a first-class engine feature: optional **AES-256-GCM** for sorted-run pages, WAL frames, and related on-disk artifacts (with passphrase- or key-based open). Agent memory on disk is not left as cleartext blobs by default when encryption is enabled - a meaningful gap versus many vector-store and SQLite-backed memory stacks that only encrypt if you bolt on filesystem or volume encryption.
 
 ## What It Provides
 
