@@ -123,7 +123,14 @@ Set `MONGRELDB_LIB` explicitly or copy the library to `/usr/local/lib` and run `
 
 ### `database is locked`
 
-Only one process can open a MongrelDB database at a time. If you switched from native to daemon, stop the native Hermes instance or use a different `db_dir`.
+MongrelDB allows **one exclusive open of a given data directory** (storage root). A second independent open of the same root fails with `DatabaseLocked`.
+
+That does **not** mean only one client can use MongrelDB:
+
+- **Native mode:** Hermes holds the exclusive open. Many threads inside Hermes can share it; a second Hermes process (or a daemon) pointing at the **same** `db_dir` will fail.
+- **Daemon mode:** `mongreldb-server` holds the exclusive open. Many Hermes (or other) clients talk to it over HTTP and share the cache — they must **not** also open the same directory with native FFI.
+
+If you switch native → daemon, stop the native Hermes process (or use a different data dir) before starting the server on that path.
 
 ### `table "hermes_memories" not found`
 

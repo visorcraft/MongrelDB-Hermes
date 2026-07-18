@@ -45,12 +45,14 @@ A hybrid memory store with multiple index types:
 | Time / importance / score | **PGM learned range** | Recency, importance, confidence, reinforcement |
 | Duplicate detection | **MinHash** | Near-duplicate consolidation at ingestion |
 
-Two execution modes:
+Two execution modes (configure `mode: native` or `mode: daemon`):
 
-- **Native Rust FFI** (default): in-process via `libmongreldb.so` — lowest latency, no daemon.
-- **HTTP daemon**: `mongreldb-server` as a separate process — warm cache, multi-process access.
+- **Native Rust FFI** (default): Hermes loads `libmongreldb.so` and opens the data directory **in-process** — lowest latency; that process owns the exclusive storage open for `db_dir`.
+- **HTTP daemon**: Hermes is an HTTP client of `mongreldb-server`. The **daemon** owns the exclusive open; many processes can share the warm cache over HTTP. Do not also open the same data directory with native FFI while the daemon is running.
 
 Optional **dense ANN** when `embedding_model` is set (for example `all-MiniLM-L6-v2`, 384-d). Leave it empty for model-free hybrid sparse + lexical retrieval. MongrelDB core keeps embedding generation as a pluggable layer: applications may supply vectors, Kit/server may register providers, and ANN indexes operate only on stored vectors plus model metadata.
+
+**Locking (0.60.x):** only one process may exclusively open a given MongrelDB data directory. In-process multi-handle/thread sharing is fine. Multi-process sharing goes through the daemon, not multiple native opens of the same path.
 
 ## Requirements
 

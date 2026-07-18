@@ -31,7 +31,9 @@ memory:
 
 ### Important limitation
 
-Only one process can open a MongrelDB database at a time. If you run two Hermes instances or a daemon plus a native instance pointing at the same `db_dir`, the second one will fail with a lock error.
+**Storage rule (still true in 0.60.x):** one process owns the exclusive open of a given data directory. Multiple threads may share that open **in-process**. A second independent open of the same root (another Hermes native process, or native + daemon on the same path) fails with `DatabaseLocked`.
+
+**Multi-process access** is the job of **daemon mode**: only `mongreldb-server` opens the root; any number of HTTP clients (Hermes included) share it.
 
 ## Daemon mode
 
