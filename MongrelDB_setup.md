@@ -168,4 +168,4 @@ Restart Hermes.
 
 ## 8. Rebuilding after a MongrelDB upgrade
 
-MongrelDB's C ABI is still evolving. After upgrading MongrelDB, rebuild the FFI crate and update the `mongreldb_hermes/_ffi.py` constants to match the new `mongreldb.h` header if your provider stops working. The provider was last validated against MongrelDB 0.60.0.
+MongrelDB's C ABI is still evolving. After upgrading MongrelDB, rebuild the FFI crate and update the `mongreldb_hermes/_ffi.py` constants to match the new `mongreldb.h` header if your provider stops working. The provider was last validated against MongrelDB 0.60.2.

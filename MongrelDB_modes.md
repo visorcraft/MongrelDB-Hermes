@@ -96,7 +96,7 @@ If `mode: daemon` is set and the daemon is not reachable at `daemon_url`, the pr
 
 ## Pluggable embedding providers on the daemon
 
-MongrelDB 0.60.0 introduced a pluggable embedding layer. The daemon can register local or remote embedding providers, so the server itself can compute vectors rather than requiring the client to supply them. This is useful if you want to centralize model management in the daemon.
+MongrelDB 0.60.2 introduced a pluggable embedding layer. The daemon can register local or remote embedding providers, so the server itself can compute vectors rather than requiring the client to supply them. This is useful if you want to centralize model management in the daemon.
 
 For the `mongreldb-hermes` provider, the default behavior is still client-supplied vectors: the provider computes embeddings locally with `sentence-transformers` and sends them to the daemon. If you want to use a daemon-registered provider instead, you would configure the `hermes_memories` table with an `EmbeddingSource::GeneratedColumn` source and leave the embedding column empty on insert. That path is not yet wired in the plugin.
 
