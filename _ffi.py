@@ -389,16 +389,32 @@ class Database:
 
         Encryption (passphrase) and logical auth (username/password) are orthogonal.
         Prefer passphrase set for at-rest protection; credentials enforce who may open.
+
+        Existing databases are opened according to their on-disk layout: if
+        ``_meta/keys`` (encryption salt) is present, open encrypted; otherwise open
+        plaintext. A passphrase only selects the encrypted create path for *new*
+        databases. This avoids failing when config has encryption enabled but the
+        data directory was created without encryption.
         """
         catalog = os.path.join(path, "CATALOG")
         exists = os.path.exists(catalog)
         has_pass = bool(passphrase)
         has_user = bool(username) and bool(password)
+        # MongrelDB stores the Argon2id salt at _meta/keys for encrypted roots.
+        encrypted_on_disk = os.path.exists(os.path.join(path, "_meta", "keys"))
         if exists:
-            if has_pass and has_user:
-                return cls.open_encrypted_with_credentials(path, passphrase, username, password)
-            if has_pass:
+            if encrypted_on_disk:
+                if not has_pass:
+                    raise MongrelDBError(
+                        f"Database at {path} is encrypted but no passphrase was provided"
+                    )
+                if has_user:
+                    return cls.open_encrypted_with_credentials(
+                        path, passphrase, username, password
+                    )
                 return cls.open_encrypted(path, passphrase)
+            # Plaintext root (no salt file) — open without encryption even if a
+            # passphrase is configured for future creates.
             if has_user:
                 return cls.open_with_credentials(path, username, password)
             return cls.open(path)
