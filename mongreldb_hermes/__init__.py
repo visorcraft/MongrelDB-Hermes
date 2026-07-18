@@ -458,16 +458,49 @@ JSON:"""
                 "weight": 1.0,
             }
 
-        result = self._table.search(
-            retrievers=retrievers,
-            must=must,
-            fusion_kind=_ffi.MDB_FUSION_RECIPROCAL_RANK,
-            fusion_constant=60,
-            rerank=rerank,
-            limit=top_k,
-            projection=[1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 18],
-        )
-        return self._rows_from_result(result)
+        try:
+            result = self._table.search(
+                retrievers=retrievers,
+                must=must,
+                fusion_kind=_ffi.MDB_FUSION_RECIPROCAL_RANK,
+                fusion_constant=60,
+                rerank=rerank,
+                limit=top_k,
+                projection=[1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 18],
+            )
+            return self._rows_from_result(result)
+        except Exception:
+            # Fall back when ANN is missing from an older empty checkpoint, or
+            # embeddings were never written: sparse-only, then FM contains.
+            if sparse:
+                try:
+                    result = self._table.search(
+                        retrievers=[{
+                            "kind": _ffi.MDB_RETRIEVER_SPARSE,
+                            "column_id": 10,
+                            "name": "sparse",
+                            "weight": 1.0,
+                            "k": candidate_k,
+                            "sparse": sparse,
+                        }],
+                        must=must,
+                        fusion_kind=_ffi.MDB_FUSION_RECIPROCAL_RANK,
+                        fusion_constant=60,
+                        rerank=None,
+                        limit=top_k,
+                        projection=[1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 18],
+                    )
+                    return self._rows_from_result(result)
+                except Exception:
+                    pass
+            must_fm = list(must)
+            must_fm.append({"kind": _ffi.MDB_COND_FM_CONTAINS, "column_id": 2, "pattern": query})
+            result = self._table.query(
+                must_fm,
+                limit=top_k,
+                projection=[1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 18],
+            )
+            return self._rows_from_result(result)
 
     def _rows_from_result(self, result) -> List[dict]:
         rows = []
@@ -564,8 +597,21 @@ JSON:"""
         except Exception:
             pass
 
-    def sync_turn(self, turn: dict, **kwargs) -> None:
-        pass
+    def sync_turn(
+        self,
+        user_content: str,
+        assistant_content: str,
+        *,
+        session_id: str = "",
+        messages=None,
+    ) -> None:
+        """Persist a completed turn (Hermes MemoryProvider contract)."""
+        try:
+            content = f"User: {user_content}\nAssistant: {assistant_content}"
+            tags = ["turn", session_id or self._session_id]
+            self._insert(content, tags=tags, source="turn")
+        except Exception:
+            pass
 
     def shutdown(self) -> None:
         with self._lock:
