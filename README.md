@@ -47,7 +47,8 @@ A hybrid memory store with multiple index types:
 | Metadata filtering | **Bitmap** indexes | `memory_type`, `state`, `project`, `user` |
 | Time / importance / score | **PGM learned range** | Recency, importance, confidence, reinforcement |
 | Duplicate detection | **MinHash** | Near-duplicate consolidation at ingestion |
-| Confidentiality on disk | **AES-256-GCM encryption at rest** | On by default for sorted runs, WAL, and caches; plaintext is the opt-out |
+| Confidentiality on disk | **AES-256-GCM encryption at rest** | On by default for sorted runs, WAL, and caches; set a passphrase/key; plaintext is the opt-out |
+| Logical access control | **Username/password credentials** | Orthogonal to encryption - who may open the DB handle; can stack with encryption |
 
 Two execution modes (configure `mode: native` or `mode: daemon`):
 
