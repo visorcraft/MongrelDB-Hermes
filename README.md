@@ -129,6 +129,13 @@ memory:
     dim: 384
     enrichment_mode: heuristic         # heuristic | llm
 
+    # Encryption at rest (AES-256-GCM) - set a strong passphrase; never commit it
+    passphrase: "${MONGRELDB_PASSPHRASE}"
+
+    # Optional logical auth ON TOP OF encryption (storage-layer credentials)
+    # username: admin
+    # password: "${MONGRELDB_DB_PASSWORD}"
+
     # daemon-only settings
     daemon_url: http://127.0.0.1:8453
     daemon_data_dir: /home/user/.hermes/mongreldb_hermes_data
@@ -143,6 +150,44 @@ Enable dense ANN in config:
     embedding_model: "all-MiniLM-L6-v2"
     dim: 384
 ```
+
+### Encryption key and credentials
+
+Encryption at rest and username/password credentials are **orthogonal**:
+
+| Layer | What it protects | How you set it |
+|-------|------------------|----------------|
+| **Encryption passphrase / key** | Bytes on disk (pages, WAL, caches) - AES-256-GCM | Passphrase (or raw key file on the engine/server) when creating/opening the DB |
+| **Username + password credentials** | Who may open/use the DB handle (logical access) | Storage-layer credentials; can be combined with encryption |
+
+You can (and usually should) use **both**: losing the passphrase means the on-disk bytes are unreadable; losing the credentials means the process cannot open an auth-enforced database even with the passphrase.
+
+#### Daemon mode (`mongreldb-server`)
+
+Start the server with a passphrase so the data directory is encrypted, and optionally with DB credentials:
+
+```bash
+export MONGRELDB_PASSPHRASE='choose-a-long-random-passphrase'
+export MONGRELDB_DB_USERNAME='admin'
+export MONGRELDB_DB_PASSWORD='choose-a-strong-password'
+
+/path/to/mongreldb-server \
+  /home/user/.hermes/mongreldb_hermes_data \
+  --port 8453 \
+  --passphrase "$MONGRELDB_PASSPHRASE" \
+  --daemon \
+  --pidfile /tmp/mongreldb-hermes.pid
+```
+
+- **`--passphrase`** (or equivalent env) selects the encryption key material for create/open.
+- **`MONGRELDB_DB_USERNAME` / `MONGRELDB_DB_PASSWORD`** (when set together) create/open an **encrypted+credentialed** database - auth on top of encryption.
+- HTTP-facing daemon auth is separate again: e.g. **`--auth-token`** (Bearer) or **`--auth-users`** (Basic) for the Kit/SQL HTTP surface. Prefer not exposing the daemon off loopback without a reverse proxy + TLS.
+
+See the engine docs: [Encryption](https://github.com/visorcraft/MongrelDB/blob/master/docs/07-encryption.md) and [Credential enforcement](https://github.com/visorcraft/MongrelDB/blob/master/docs/15-credential-enforcement.md).
+
+#### Native mode (`libmongreldb.so`)
+
+Native opens go through the C ABI (`mongreldb_create` / `mongreldb_open` and the encrypted / with-credentials variants). Configure the same **passphrase** (encryption) and optional **username/password** (credentials) in the plugin config or environment so Hermes does not open a cleartext root by accident. Prefer injecting secrets via env (`MONGRELDB_PASSPHRASE`, `MONGRELDB_DB_USERNAME`, `MONGRELDB_DB_PASSWORD`) rather than committing them in `config.yaml`.
 
 ### 5. Restart Hermes
 
