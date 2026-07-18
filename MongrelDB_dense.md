@@ -13,7 +13,7 @@ A query like:
 can retrieve a memory:
 
 ```
-"MongrelDB 0.58.4 rejects multi-session WAL histories after an unclean shutdown."
+"MongrelDB rejects multi-session WAL histories after an unclean shutdown."
 ```
 
 even though the two phrases share no exact words. Dense embeddings capture meaning rather than token overlap.
@@ -33,17 +33,6 @@ memory:
     embedding_model: "all-MiniLM-L6-v2"
     dim: 384
 ```
-
-Other options:
-
-| Model | Dimensions | Notes |
-|-------|------------|-------|
-| `all-MiniLM-L6-v2` | 384 | Good balance of quality and speed |
-| `bge-small-en` | 384 | Similar speed, different training data |
-| `gtr-t5-base` | 768 | Higher quality, slower |
-| `bge-micro-v2` | 384 | Smaller, faster, lower quality |
-
-For a faster local model, consider quantizing with ONNX or using a smaller model.
 
 ## Install the embedding dependency
 
@@ -74,10 +63,10 @@ With `all-MiniLM-L6-v2` on a modern CPU, expect roughly 20–30 ms per insert or
 
 Measured on a 50-entry synthetic dataset, 5 topics, top_k=5, native FFI, warm model cache:
 
-|| Mode | Insert (ms) | Search (ms) | P@5 | R@5 |
-||------|------------:|------------:|----:|----:|
-|| Model-free | 0.94 | 0.63 | 1.00 | 0.50 |
-|| Dense ANN (`all-MiniLM-L6-v2`) | 25.88 | 19.3 | 1.00 | 0.50 |
+| Mode | Insert (ms) | Search (ms) | P@5 | R@5 |
+|------|------------:|------------:|----:|----:|
+| Model-free | 0.94 | 0.63 | 1.00 | 0.50 |
+| Dense ANN (`all-MiniLM-L6-v2`) | 25.88 | 19.3 | 1.00 | 0.50 |
 
 On a lexical benchmark the two modes score identically, because the queries are exact topic strings. The value of dense ANN appears on vague or paraphrased queries, where sparse-only retrieval would miss the connection.
 
@@ -88,14 +77,7 @@ If you want semantic recall but lower latency, the best paths are:
 
 ## Switching from model-free to dense
 
-Currently, the schema is created on first database creation. To switch from model-free to dense, delete or rename the existing `db_dir` and let the plugin recreate it with the embedding column and ANN index.
-
-```bash
-mv /home/user/.hermes/mongreldb_hermes_data \
-   /home/user/.hermes/mongreldb_hermes_data_model_free_backup
-```
-
-Then set `embedding_model: "all-MiniLM-L6-v2"` and restart Hermes.
+Set `embedding_model: "all-MiniLM-L6-v2"` and restart Hermes. The existing schema already has a nullable embedding column and ANN index. New memories receive embeddings; existing memories are not backfilled automatically.
 
 ## Dense ANN with the daemon
 

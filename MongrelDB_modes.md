@@ -40,7 +40,7 @@ memory:
 
 In daemon mode, the provider connects to a running `mongreldb-server` process over HTTP. The daemon owns the database lock and can keep the page cache, result cache, and memtable warm between Hermes restarts.
 
-Enable it with `hermes memory setup mongreldb_hermes` and choose `daemon`, or
+Run `hermes memory setup`, select `mongreldb_hermes`, and choose `daemon`, or
 set the configuration below manually.
 
 ### Why daemon mode fits Hermes
@@ -114,9 +114,8 @@ For the `mongreldb-hermes` provider, the default behavior is still client-suppli
 To switch from native to daemon:
 
 1. Stop Hermes.
-2. Start the daemon (or use `start_daemon.sh`).
-3. Change `mode: native` to `mode: daemon` in `config.yaml`.
-4. Restart Hermes.
+2. Change `mode: native` to `mode: daemon` in `config.yaml`.
+3. Restart Hermes. The plugin starts the bundled daemon if needed.
 
 To switch from daemon to native:
 

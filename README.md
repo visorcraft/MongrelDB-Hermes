@@ -10,15 +10,17 @@
 
 <p align="center">
   <a href="https://github.com/visorcraft/MongrelDB"><img src="https://img.shields.io/badge/engine-MongrelDB-blue.svg" alt="MongrelDB" /></a>
-  <a href="https://github.com/visorcraft/MongrelDB-Hermes/actions"><img src="https://img.shields.io/badge/CI-pending-lightgrey.svg" alt="CI" /></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License" /></a>
 </p>
 
-## Package
+## Quick Start
 
-| Surface | Location | Install |
-|---|---|---|
-| Hermes memory provider | Repository root | `hermes plugins install visorcraft/MongrelDB-Hermes` |
+```bash
+hermes plugins install visorcraft/MongrelDB-Hermes --no-enable
+hermes memory setup
+```
+
+Select `mongreldb_hermes` in memory setup. It is an exclusive memory provider, not a general Hermes plugin. It does not need `hermes plugins enable mongreldb_hermes`. Ignore Hermes' generic plugin-enable and gateway-restart instructions after installation; memory setup selects the provider, shows its configuration choices, and downloads both MongrelDB runtimes.
 
 ## Why MongrelDB for Hermes?
 
@@ -66,30 +68,17 @@ Optional **dense ANN** when `embedding_model` is set (for example `all-MiniLM-L6
 - Linux x64 glibc/musl, Linux arm64 glibc, or macOS x64/arm64
 - Optional: `sentence-transformers` when dense ANN is enabled
 
-The plugin downloads MongrelDB 0.60.2 automatically. No Rust toolchain or separate `libmongreldb_kit` install is needed.
+Plugin 1.0.0 targets MongrelDB 0.60.2. When memory settings are saved, or on first provider start if setup was skipped, it downloads the matching native archive and daemon binary from the [MongrelDB 0.60.2 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.60.2). It verifies both SHA-256 digests, keeps only the shared library and `mongreldb-server`, and deletes the downloads. Linux x64 glibc downloads about 349 MB once and keeps about 397 MB. No Rust toolchain or separate `libmongreldb_kit` install is needed.
 
-## Quick Start
-
-### 1. Install the plugin
-
-Hermes installs standalone plugins into `~/.hermes/plugins/`:
-
-```bash
-hermes plugins install visorcraft/MongrelDB-Hermes --no-enable
-hermes memory setup mongreldb_hermes
-```
-
-When memory settings are saved, or on first provider start if setup was skipped, the plugin downloads the matching native archive and daemon binary from the [MongrelDB 0.60.2 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.60.2). It verifies both SHA-256 digests, extracts only the shared library, and deletes all downloads. The final `vendor/0.60.2/` directory contains only the shared library and `mongreldb-server`, ready for either mode. Linux x64 glibc downloads about 349 MB once and keeps about 397 MB.
-
-Optional dense ANN dependency:
+Dense ANN additionally needs:
 
 ```bash
 pip install --user sentence-transformers
 ```
 
-### 2. Configure Hermes
+## Manual Configuration
 
-`hermes memory setup mongreldb_hermes` prompts for native or daemon mode. For
+Run `hermes memory setup`, select `mongreldb_hermes`, then choose native or daemon mode. For
 manual or advanced configuration, edit `/home/user/.hermes/config.yaml`:
 
 ```yaml
@@ -160,13 +149,13 @@ export MONGRELDB_DB_PASSWORD='choose-a-strong-password'
 - HTTP-facing daemon auth is separate again: e.g. **`--auth-token`** (Bearer) or **`--auth-users`** (Basic) for the Kit/SQL HTTP surface. Prefer not exposing the daemon off loopback without a reverse proxy + TLS.
 - Set `MONGRELDB_DAEMON_AUTH_TOKEN` when the daemon uses `--auth-token`.
 
-See the engine docs: [Encryption](https://github.com/visorcraft/MongrelDB/blob/master/docs/07-encryption.md) and [Credential enforcement](https://github.com/visorcraft/MongrelDB/blob/master/docs/15-credential-enforcement.md).
+See the engine docs: [Encryption](https://github.com/visorcraft/MongrelDB/blob/v0.60.2/docs/07-encryption.md) and [Credential enforcement](https://github.com/visorcraft/MongrelDB/blob/v0.60.2/docs/15-credential-enforcement.md).
 
 #### Native mode (`libmongreldb.so`)
 
 Native opens go through the encrypted C ABI by default. The plugin generates or loads the passphrase before opening the database, so a missing secret never silently creates plaintext. Set `encryption: disabled` or `MONGRELDB_ENCRYPTION=disabled` to opt out explicitly. Prefer environment variables (`MONGRELDB_PASSPHRASE`, `MONGRELDB_DB_USERNAME`, `MONGRELDB_DB_PASSWORD`) over committing secrets in `config.yaml`.
 
-### 3. Restart Hermes
+### Restart Hermes
 
 The plugin creates the database and table on first use.
 
@@ -176,7 +165,7 @@ The plugin creates the database and table on first use.
 - [Modes](MongrelDB_modes.md) - native FFI vs HTTP daemon
 - [Dense ANN](MongrelDB_dense.md) - enabling `all-MiniLM-L6-v2` and model policy
 - [Standalone Rust](MongrelDB_standalone.md) - using MongrelDB directly outside Hermes
-- [Engine embeddings & retrieval](https://github.com/visorcraft/MongrelDB/blob/master/docs/22-embeddings-and-retrieval.md) - pluggable `EmbeddingSource` / provider registry
+- [Engine embeddings & retrieval](https://github.com/visorcraft/MongrelDB/blob/v0.60.2/docs/22-embeddings-and-retrieval.md) - pluggable `EmbeddingSource` / provider registry
 
 ## Modes
 
@@ -208,6 +197,7 @@ See [MongrelDB_modes.md](MongrelDB_modes.md). Helper scripts: `start_daemon.sh`,
 | Path | Purpose |
 |------|---------|
 | `plugin.yaml` | Hermes provider manifest |
+| `after-install.md` | Memory-provider activation instructions shown by Hermes |
 | `__init__.py` | Provider implementation and registration |
 | `_ffi.py` | ctypes wrapper for `libmongreldb.so` |
 | `install_mongreldb.py` | Verified platform binary installer |
@@ -228,7 +218,6 @@ See [MongrelDB_modes.md](MongrelDB_modes.md). Helper scripts: `start_daemon.sh`,
 
 - Set `MONGRELDB_LIB` only to override the bundled shared library.
 - A MongrelDB path is a **data directory**, not a single file.
-- Switching from model-free to dense may require a fresh `db_dir` if the table was created without an embedding column / ANN index (see [MongrelDB_dense.md](MongrelDB_dense.md)).
 - Do not invent weak hashed dense vectors to “fake” ANN; prefer sparse retrieval when no real model is available.
 
 ## License

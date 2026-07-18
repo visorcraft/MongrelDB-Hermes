@@ -50,7 +50,6 @@ The plugin is a client of MongrelDB. Typical `mongreldb-server` posture:
 - **No authentication by default** — any local process can query, write, or
   delete data. Enable daemon auth on any shared host.
 - No TLS on the raw daemon port — use a reverse proxy for remote access.
-- No rate limiting or request size caps by default.
 
 Do not expose the daemon directly to an untrusted network.
 
@@ -67,7 +66,7 @@ Do not expose the daemon directly to an untrusted network.
 
 Direct runtime dependencies may include Hermes, MongrelDB (`libmongreldb` /
 `mongreldb-server`), and optional Python packages (`sentence-transformers`,
-`openai`, `python-dotenv`). Report dependency issues via Dependabot or the
+`openai`). Report dependency issues via Dependabot or the
 private vulnerability flow below. Engine vulnerabilities should also be
 reported against [visorcraft/MongrelDB](https://github.com/visorcraft/MongrelDB)
 when they are not specific to this plugin.

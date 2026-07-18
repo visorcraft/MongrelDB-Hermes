@@ -6,8 +6,10 @@ This guide covers installing the `mongreldb-hermes` plugin and its MongrelDB bin
 
 ```bash
 hermes plugins install visorcraft/MongrelDB-Hermes --no-enable
-hermes memory setup mongreldb_hermes
+hermes memory setup
 ```
+
+Select `mongreldb_hermes` in memory setup. The plugin is an exclusive memory provider. Ignore Hermes' generic `hermes plugins enable mongreldb_hermes` message; memory setup selects, configures, and activates it.
 
 Saving memory setup downloads both MongrelDB 0.60.2 runtime files for the current platform. If setup is skipped, first provider startup performs the same install. Downloads are SHA-256 verified and deleted after extraction. Only these files remain:
 
@@ -24,6 +26,7 @@ Directory layout after install:
 /home/user/.hermes/plugins/mongreldb_hermes/
 ├── __init__.py
 ├── _ffi.py
+├── after-install.md
 ├── install_mongreldb.py
 ├── plugin.yaml
 ├── vendor/0.60.2/
@@ -38,7 +41,7 @@ Directory layout after install:
 
 ## 2. Configure Hermes
 
-The setup command above writes the configuration. To configure it manually,
+The interactive setup command above writes the configuration. To configure it manually,
 edit `/home/user/.hermes/config.yaml`:
 
 ```yaml
@@ -58,7 +61,6 @@ Encryption is enabled by default. If no passphrase is configured, the plugin cre
 ## 3. Verify installation
 
 ```bash
-hermes plugins list --user
 hermes memory status
 ```
 
