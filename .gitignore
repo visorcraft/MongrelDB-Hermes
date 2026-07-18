@@ -1,0 +1,67 @@
+# OS and editor state
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.zcode/
+*.swp
+*.swo
+*~
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+*.local
+CLAUDE.md
+AGENTS.md
+
+# Local planning notes
+PLAN.md
+
+# Logs
+*.log
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.eggs/
+*.egg
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local databases and scratch data (Hermes / MongrelDB data dirs)
+*.db
+*.sqlite
+*.sqlite3
+data/
+tmp/
+temp/
+*_data/
+mongreldb_*_data/
+
+# Native libraries built locally (point MONGRELDB_LIB at a MongrelDB checkout)
+*.so
+*.dylib
+*.dll
+libmongreldb*
+
+# Daemon runtime
+*.pid

@@ -1,0 +1,9 @@
+name: mongreldb_hermes
+version: 0.1.0
+description: |
+  MongrelDB-backed long-term memory provider for Hermes.
+  Supports both native Rust FFI and HTTP daemon modes.
+author: Visorcraft
+entry: __init__.py
+class: MongrelDBHermesMemoryProvider
+type: memory
