@@ -52,11 +52,11 @@ This repo is a Hermes memory plugin (Python) that loads MongrelDB via
 
 ```sh
 # Syntax check
-python3 -m py_compile mongreldb_hermes/__init__.py mongreldb_hermes/_ffi.py
+python3 -m py_compile __init__.py _ffi.py tests/test_daemon.py
 
 # Optional: unit/smoke against a local MongrelDB build
 export MONGRELDB_LIB=/path/to/MongrelDB/crates/mongreldb-ffi/target/release/libmongreldb.so
-# Install the package under a Hermes plugins/memory/mongreldb_hermes tree and
+# Install the standalone plugin under ~/.hermes/plugins/mongreldb_hermes and
 # exercise mongreldb_remember / mongreldb_search with embedding_model empty
 # and with all-MiniLM-L6-v2.
 ```
@@ -65,8 +65,7 @@ export MONGRELDB_LIB=/path/to/MongrelDB/crates/mongreldb-ffi/target/release/libm
 
 - Keep generic paths in docs (`/home/user/.hermes`, `/path/to/...`) — do not
   commit machine-specific home directories.
-- Keep `plugin.yaml` and `mongreldb_hermes/plugin.yaml` aligned (name, version,
-  hooks, pip_dependencies).
+- Keep `plugin.yaml` version and hooks aligned with provider behavior.
 - README layout follows the MongrelDB Kit style (centered mascot, tables,
   dual license).
 

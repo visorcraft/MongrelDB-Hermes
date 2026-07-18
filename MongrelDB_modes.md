@@ -39,6 +39,9 @@ memory:
 
 In daemon mode, the provider connects to a running `mongreldb-server` process over HTTP. The daemon owns the database lock and can keep the page cache, result cache, and memtable warm between Hermes restarts.
 
+Enable it with `hermes memory setup mongreldb_hermes` and choose `daemon`, or
+set the configuration below manually.
+
 ### Why daemon mode fits Hermes
 
 Use daemon mode when:
@@ -84,9 +87,9 @@ Or use the helper script included in this plugin:
 
 ### Starting the daemon from the plugin
 
-If `mode: daemon` is set and the daemon is not reachable at `daemon_url`, the provider will try to launch it using `daemon_binary` with the configured `daemon_data_dir`, `daemon_pidfile`, and `daemon_log`. The daemon will log to the configured log file and run in the background.
+If `mode: daemon` is set and the daemon is not reachable at `daemon_url`, the provider will try to launch it using `daemon_binary` with the configured `daemon_data_dir`, `daemon_pidfile`, and `daemon_log`. Leave `daemon_binary` empty when another service manages the daemon.
 
-> **Note:** The daemon client code exists in the provider but is not fully tested end-to-end yet. For production use, start the daemon manually with the helper script.
+The provider uses the typed `/kit/create_table`, `/kit/txn`, `/kit/query`, and `/kit/search` endpoints. Set `MONGRELDB_DAEMON_AUTH_TOKEN` when the server uses `--auth-token`.
 
 ### Important notes
 

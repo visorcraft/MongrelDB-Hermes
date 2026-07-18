@@ -8,7 +8,9 @@ This guide covers building MongrelDB and installing the `mongreldb-hermes` plugi
 
 ```bash
 git clone https://github.com/visorcraft/MongrelDB.git
-cd mongreldb/crates/mongreldb-ffi
+cd MongrelDB
+git checkout v0.60.2
+cd crates/mongreldb-ffi
 cargo build --release
 ```
 
@@ -50,17 +52,17 @@ sudo ldconfig
 ## 3. Install the plugin
 
 ```bash
-cp -r /path/to/mongreldb-hermes /home/user/.hermes/hermes-agent/plugins/memory/
+hermes plugins install visorcraft/MongrelDB-Hermes --no-enable
+hermes memory setup mongreldb_hermes
 ```
 
 Directory layout after install:
 
 ```
-/home/user/.hermes/hermes-agent/plugins/memory/mongreldb-hermes/
+/home/user/.hermes/plugins/mongreldb_hermes/
+├── __init__.py
+├── _ffi.py
 ├── plugin.yaml
-├── mongreldb_hermes/
-│   ├── __init__.py
-│   └── _ffi.py
 ├── README.md
 ├── MongrelDB_setup.md
 ├── MongrelDB_modes.md
@@ -72,7 +74,8 @@ Directory layout after install:
 
 ## 4. Configure Hermes
 
-Edit `/home/user/.hermes/config.yaml`:
+The setup command above writes the configuration. To configure it manually,
+edit `/home/user/.hermes/config.yaml`:
 
 ```yaml
 memory:
@@ -87,32 +90,9 @@ memory:
 
 ## 5. Verify installation
 
-Run a quick Python test from the Hermes environment:
-
-```python
-from hermes_agent.plugins.memory.mongreldb_hermes import MongrelDBHermesMemoryProvider
-
-p = MongrelDBHermesMemoryProvider()
-p.initialize(session_id="test", hermes_home="/home/user/.hermes", user_id="user")
-
-print(p.handle_tool_call("mongreldb_remember", {
-    "content": "MongrelDB is installed for Hermes",
-    "tags": ["setup", "mongrel"]
-}))
-
-print(p.handle_tool_call("mongreldb_search", {
-    "query": "MongrelDB Hermes",
-    "top_k": 5
-}))
-
-p.shutdown()
-```
-
-Expected output:
-
-```python
-{'success': True, 'memory_id': 1234567890123}
-{'results': [{'content': 'MongrelDB is installed for Hermes', ...}], 'count': 1}
+```bash
+hermes plugins list --user
+hermes memory status
 ```
 
 ## 6. Common issues
@@ -168,4 +148,4 @@ Restart Hermes.
 
 ## 8. Rebuilding after a MongrelDB upgrade
 
-MongrelDB's C ABI is still evolving. After upgrading MongrelDB, rebuild the FFI crate and update the `mongreldb_hermes/_ffi.py` constants to match the new `mongreldb.h` header if your provider stops working. The provider was last validated against MongrelDB 0.60.2.
+MongrelDB's C ABI is still evolving. This plugin targets MongrelDB 0.60.2. Update `_ffi.py` against the new `mongreldb.h` before changing that requirement.

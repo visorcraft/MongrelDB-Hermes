@@ -18,7 +18,7 @@
 
 | Surface | Location | Install |
 |---|---|---|
-| Hermes memory provider | `mongreldb_hermes/` | Copy into `~/.hermes/hermes-agent/plugins/memory/` (see [Quick start](#quick-start)) |
+| Hermes memory provider | Repository root | `hermes plugins install visorcraft/MongrelDB-Hermes` |
 
 ## Why MongrelDB for Hermes?
 
@@ -61,12 +61,14 @@ Optional **dense ANN** when `embedding_model` is set (for example `all-MiniLM-L6
 
 ## Requirements
 
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) (or compatible Hermes install) with a `plugins/memory/` directory
-- [MongrelDB](https://github.com/visorcraft/MongrelDB) built as:
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) with standalone plugin support
+- [MongrelDB 0.60.2](https://github.com/visorcraft/MongrelDB/releases/tag/v0.60.2) built as:
   - `libmongreldb.so` for native mode, and/or
   - `mongreldb-server` for daemon mode
 - Python 3.10+ for the plugin runtime
 - Optional: `sentence-transformers` when dense ANN is enabled
+
+No separate `libmongreldb_kit` install is needed. Native mode uses MongrelDB's C ABI; daemon mode uses the 0.60.2 Kit HTTP API shipped by `mongreldb-server`.
 
 ## Quick Start
 
@@ -75,6 +77,7 @@ Optional **dense ANN** when `embedding_model` is set (for example `all-MiniLM-L6
 ```bash
 git clone https://github.com/visorcraft/MongrelDB.git
 cd MongrelDB
+git checkout v0.60.2
 
 # C FFI shared library (native mode)
 cd crates/mongreldb-ffi
@@ -100,14 +103,11 @@ sudo ldconfig
 
 ### 3. Install the plugin
 
-Hermes loads memory providers from `plugins/memory/<name>/` (directory must
-contain `__init__.py`). Install the package tree as that directory:
+Hermes installs standalone plugins into `~/.hermes/plugins/`:
 
 ```bash
-git clone https://github.com/visorcraft/MongrelDB-Hermes.git
-mkdir -p /home/user/.hermes/hermes-agent/plugins/memory
-# Copy the provider package (not the whole repo root) so __init__.py sits at the plugin root:
-cp -a MongrelDB-Hermes/mongreldb_hermes /home/user/.hermes/hermes-agent/plugins/memory/mongreldb_hermes
+hermes plugins install visorcraft/MongrelDB-Hermes --no-enable
+hermes memory setup mongreldb_hermes
 ```
 
 Optional dense ANN dependency:
@@ -118,7 +118,8 @@ pip install --user sentence-transformers
 
 ### 4. Configure Hermes
 
-Edit `/home/user/.hermes/config.yaml`:
+`hermes memory setup mongreldb_hermes` prompts for native or daemon mode. For
+manual or advanced configuration, edit `/home/user/.hermes/config.yaml`:
 
 ```yaml
 memory:
@@ -144,6 +145,9 @@ memory:
     daemon_log: /tmp/mongreldb-hermes.log
     daemon_binary: /path/to/mongreldb-server
 ```
+
+For daemon mode, leave `daemon_binary` empty to connect to a daemon you manage.
+Set it to `mongreldb-server` to let the plugin start a local daemon when needed.
 
 Enable dense ANN in config:
 
@@ -183,6 +187,7 @@ export MONGRELDB_DB_PASSWORD='choose-a-strong-password'
 - **`--passphrase`** (or equivalent env) selects the encryption key material for create/open.
 - **`MONGRELDB_DB_USERNAME` / `MONGRELDB_DB_PASSWORD`** (when set together) create/open an **encrypted+credentialed** database - auth on top of encryption.
 - HTTP-facing daemon auth is separate again: e.g. **`--auth-token`** (Bearer) or **`--auth-users`** (Basic) for the Kit/SQL HTTP surface. Prefer not exposing the daemon off loopback without a reverse proxy + TLS.
+- Set `MONGRELDB_DAEMON_AUTH_TOKEN` when the daemon uses `--auth-token`.
 
 See the engine docs: [Encryption](https://github.com/visorcraft/MongrelDB/blob/master/docs/07-encryption.md) and [Credential enforcement](https://github.com/visorcraft/MongrelDB/blob/master/docs/15-credential-enforcement.md).
 
@@ -231,10 +236,9 @@ See [MongrelDB_modes.md](MongrelDB_modes.md). Helper scripts: `start_daemon.sh`,
 
 | Path | Purpose |
 |------|---------|
-| `plugin.yaml` | Hermes provider manifest (package entrypoint) |
-| `mongreldb_hermes/__init__.py` | Provider implementation |
-| `mongreldb_hermes/_ffi.py` | ctypes wrapper for `libmongreldb.so` |
-| `mongreldb_hermes/plugin.yaml` | Manifest next to the package (for in-tree installs) |
+| `plugin.yaml` | Hermes provider manifest |
+| `__init__.py` | Provider implementation and registration |
+| `_ffi.py` | ctypes wrapper for `libmongreldb.so` |
 | `MongrelDB_setup.md` | Build and install |
 | `MongrelDB_modes.md` | Native vs daemon |
 | `MongrelDB_dense.md` | Dense ANN |
@@ -245,8 +249,8 @@ See [MongrelDB_modes.md](MongrelDB_modes.md). Helper scripts: `start_daemon.sh`,
 ## Current State
 
 - **Native FFI** path is the primary, tested mode (model-free and dense ANN with MiniLM).
-- **Daemon mode** is the supported way to share one data directory across processes (or keep a warm cache across Hermes restarts). Use a current `mongreldb-server` build; start it with `start_daemon.sh` or configure `daemon_*` keys and `mode: daemon`.
-- Align the linked `libmongreldb.so` / `mongreldb-server` with a MongrelDB release that ships the embedding provider registry (see engine docs).
+- **Daemon mode** uses the server's typed `/kit/*` HTTP API for schema creation, writes, hybrid search, filtering, and deletion. Start the server yourself or configure `daemon_binary` for local auto-start.
+- Native mode requires MongrelDB 0.60.2. Daemon mode requires `mongreldb-server` 0.60.2 and uses its 0.60.2 Kit HTTP API.
 
 ## Development Notes
 

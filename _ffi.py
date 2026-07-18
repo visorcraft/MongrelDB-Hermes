@@ -5,12 +5,13 @@ Only the subset needed for the memory provider is exposed.
 """
 import ctypes
 from ctypes import c_char, c_char_p, c_double, c_float, c_int8, c_int32, c_int64, c_size_t, c_uint8, c_uint16, c_uint32, c_uint64, c_void_p, POINTER, Structure, Union, byref
+from ctypes.util import find_library
 import os
 
 class MongrelDBError(Exception):
     pass
 
-LIB_PATH = os.environ.get("MONGRELDB_LIB", "/path/to/mongreldb/crates/mongreldb-ffi/target/release/libmongreldb.so")
+LIB_PATH = os.environ.get("MONGRELDB_LIB") or find_library("mongreldb") or "libmongreldb.so"
 _lib = ctypes.CDLL(LIB_PATH)
 
 MDB_TYPE_INT64 = 4
@@ -76,6 +77,10 @@ class _ByteSliceArray(Structure):
     _fields_ = [("items", POINTER(_ByteSlice)), ("len", c_size_t)]
 
 
+class _StringArray(Structure):
+    _fields_ = [("items", POINTER(c_char_p)), ("len", c_size_t)]
+
+
 class _ValueUnion(Union):
     _fields_ = [
         ("b", c_uint8),
@@ -101,10 +106,6 @@ class _CellInput(Structure):
 
 class _CellInputArray(Structure):
     _fields_ = [("data", POINTER(_CellInput)), ("len", c_size_t)]
-
-
-class _ByteSliceArray(Structure):
-    _fields_ = [("items", POINTER(_ByteSlice)), ("len", c_size_t)]
 
 
 class _Condition(Structure):
@@ -135,7 +136,7 @@ class _ColumnDef(Structure):
         ("embedding_dim", c_uint32),
         ("decimal_precision", c_uint8),
         ("decimal_scale", c_int8),
-        ("enum_variants", c_void_p),
+        ("enum_variants", _StringArray),
     ]
 
 
@@ -230,6 +231,7 @@ _lib.mongreldb_database_free.argtypes = [c_void_p]
 _lib.mongreldb_last_error.restype = c_char_p
 
 _lib.mongreldb_schema_begin.restype = c_void_p
+_lib.mongreldb_schema_begin.argtypes = []
 _lib.mongreldb_schema_add_column.restype = c_int32
 _lib.mongreldb_schema_add_column.argtypes = [c_void_p, POINTER(_ColumnDef)]
 _lib.mongreldb_schema_add_index.restype = c_int32
@@ -247,14 +249,15 @@ _lib.mongreldb_table_free.argtypes = [c_void_p]
 _lib.mongreldb_table_put.restype = c_int32
 _lib.mongreldb_table_put.argtypes = [c_void_p, POINTER(_CellInputArray), POINTER(c_uint64)]
 _lib.mongreldb_query_begin.restype = c_void_p
+_lib.mongreldb_query_begin.argtypes = []
 _lib.mongreldb_query_add.restype = c_int32
 _lib.mongreldb_query_add.argtypes = [c_void_p, POINTER(_Condition)]
 _lib.mongreldb_query_set_projection.restype = c_int32
 _lib.mongreldb_query_set_projection.argtypes = [c_void_p, POINTER(c_uint16), c_size_t]
 _lib.mongreldb_query_set_limit.restype = c_int32
-_lib.mongreldb_query_set_limit.argtypes = [c_void_p, c_size_t]
+_lib.mongreldb_query_set_limit.argtypes = [c_void_p, c_uint64]
 _lib.mongreldb_query_set_offset.restype = c_int32
-_lib.mongreldb_query_set_offset.argtypes = [c_void_p, c_size_t]
+_lib.mongreldb_query_set_offset.argtypes = [c_void_p, c_uint64]
 _lib.mongreldb_query_free.restype = None
 _lib.mongreldb_query_free.argtypes = [c_void_p]
 _lib.mongreldb_table_query.restype = c_void_p
@@ -272,7 +275,6 @@ _lib.mongreldb_search_request_free.restype = None
 _lib.mongreldb_search_request_free.argtypes = [c_void_p]
 _lib.mongreldb_table_search.restype = c_void_p
 _lib.mongreldb_table_search.argtypes = [c_void_p, POINTER(_SearchRequest)]
-
 
 
 def _check(code, msg="MongrelDB"):
@@ -440,7 +442,8 @@ class Schema:
             d.embedding_dim = col.get("embedding_dim", 0)
             d.decimal_precision = 0
             d.decimal_scale = 0
-            d.enum_variants = None
+            d.enum_variants.items = None
+            d.enum_variants.len = 0
             _check(_lib.mongreldb_schema_add_column(b, byref(d)), "schema_add_column")
         for idx in indexes:
             i = _IndexDef()
