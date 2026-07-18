@@ -18,6 +18,7 @@ memory:
   mongreldb_hermes:
     mode: native
     db_dir: /home/user/.hermes/mongreldb_hermes_data
+    encryption: enabled
     embedding_model: ""
     dim: 384
 ```
@@ -60,11 +61,12 @@ memory:
   provider: mongreldb_hermes
   mongreldb_hermes:
     mode: daemon
+    encryption: enabled
     daemon_url: http://127.0.0.1:8453
     daemon_data_dir: /home/user/.hermes/mongreldb_hermes_data
     daemon_pidfile: /tmp/mongreldb-hermes.pid
     daemon_log: /tmp/mongreldb-hermes.log
-    daemon_binary: /path/to/mongreldb-server
+    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.2/mongreldb-server
     embedding_model: ""
     dim: 384
 ```
@@ -72,9 +74,11 @@ memory:
 ### Starting the daemon manually
 
 ```bash
-/path/to/mongreldb-server \
+export MONGRELDB_PASSPHRASE="$(cat ~/.hermes/mongreldb_hermes.key)"
+/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.60.2/mongreldb-server \
     /home/user/.hermes/mongreldb_hermes_data \
     8453 \
+    --passphrase "$MONGRELDB_PASSPHRASE" \
     --daemon \
     --pidfile /tmp/mongreldb-hermes.pid
 ```
@@ -82,18 +86,20 @@ memory:
 Or use the helper script included in this plugin:
 
 ```bash
-/path/to/mongreldb-hermes/start_daemon.sh
+~/.hermes/plugins/mongreldb_hermes/start_daemon.sh
 ```
 
 ### Starting the daemon from the plugin
 
-If `mode: daemon` is set and the daemon is not reachable at `daemon_url`, the provider will try to launch it using `daemon_binary` with the configured `daemon_data_dir`, `daemon_pidfile`, and `daemon_log`. Leave `daemon_binary` empty when another service manages the daemon.
+If `mode: daemon` is set and the daemon is not reachable at `daemon_url`, the provider launches the bundled `mongreldb-server` using the configured `daemon_data_dir`, `daemon_pidfile`, and `daemon_log`. Set `MONGRELDB_DAEMON_BINARY` to override it.
 
 The provider uses the typed `/kit/create_table`, `/kit/txn`, `/kit/query`, and `/kit/search` endpoints. Set `MONGRELDB_DAEMON_AUTH_TOKEN` when the server uses `--auth-token`.
 
 ### Important notes
 
-- The daemon must be built before the plugin can start it. See `MongrelDB_setup.md`.
+- The installer downloads the daemon before saving memory configuration, or on first provider start if setup was skipped.
+- Encryption is enabled by default. The plugin creates `~/.hermes/mongreldb_hermes.key` with mode `0600` when no passphrase is supplied. Back it up with the database.
+- Set `encryption: disabled` or `MONGRELDB_ENCRYPTION=disabled` only to opt into plaintext storage.
 - The daemon and native modes cannot share the same `db_dir` at the same time.
 - The daemon keeps the database open, so its shutdown is managed by the daemon, not by Hermes.
 

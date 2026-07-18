@@ -52,7 +52,10 @@ This repo is a Hermes memory plugin (Python) that loads MongrelDB via
 
 ```sh
 # Syntax check
-python3 -m py_compile __init__.py _ffi.py tests/test_daemon.py
+python3 -m py_compile __init__.py _ffi.py install_mongreldb.py tests/test_daemon.py tests/test_encryption.py tests/test_installer.py
+python3 tests/test_installer.py
+python3 tests/test_encryption.py
+python3 tests/test_daemon.py
 
 # Optional: unit/smoke against a local MongrelDB build
 export MONGRELDB_LIB=/path/to/MongrelDB/crates/mongreldb-ffi/target/release/libmongreldb.so

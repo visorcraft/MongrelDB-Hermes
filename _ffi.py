@@ -7,11 +7,14 @@ import ctypes
 from ctypes import c_char, c_char_p, c_double, c_float, c_int8, c_int32, c_int64, c_size_t, c_uint8, c_uint16, c_uint32, c_uint64, c_void_p, POINTER, Structure, Union, byref
 from ctypes.util import find_library
 import os
+import sys
 
 class MongrelDBError(Exception):
     pass
 
-LIB_PATH = os.environ.get("MONGRELDB_LIB") or find_library("mongreldb") or "libmongreldb.so"
+_library_name = "libmongreldb.dylib" if sys.platform == "darwin" else "libmongreldb.so"
+_bundled_library = os.path.join(os.path.dirname(__file__), "vendor", "0.60.2", _library_name)
+LIB_PATH = os.environ.get("MONGRELDB_LIB") or (_bundled_library if os.path.isfile(_bundled_library) else None) or find_library("mongreldb") or _library_name
 _lib = ctypes.CDLL(LIB_PATH)
 
 MDB_TYPE_INT64 = 4

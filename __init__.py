@@ -26,6 +26,8 @@ DEFAULT_DB_DIR = ""
 DEFAULT_EMBEDDING_MODEL = ""
 DEFAULT_DIM = 384
 DEFAULT_DAEMON_URL = "http://127.0.0.1:8453"
+DEFAULT_DAEMON_BINARY = os.path.join(os.path.dirname(__file__), "vendor", "0.60.2", "mongreldb-server")
+DEFAULT_ENCRYPTION = "enabled"
 TABLE_NAME = "hermes_memories"
 RESULT_COLUMNS = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 18]
 
@@ -34,6 +36,21 @@ def _load_ffi():
     from . import _ffi
 
     return _ffi
+
+
+def _install_binaries():
+    from .install_mongreldb import install
+
+    return install()
+
+
+def _normalize_encryption(value) -> str:
+    value = str(value or DEFAULT_ENCRYPTION).strip().lower()
+    if value in {"enabled", "true", "yes", "on"}:
+        return "enabled"
+    if value in {"disabled", "false", "no", "off"}:
+        return "disabled"
+    raise ValueError("MongrelDB encryption must be 'enabled' or 'disabled'")
 
 SEARCH_SCHEMA = {
     "name": "mongreldb_search",
@@ -158,10 +175,11 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         self._db_dir = ""
         self._daemon_url = DEFAULT_DAEMON_URL
         self._daemon_data_dir = ""
-        self._daemon_binary = ""
+        self._daemon_binary = DEFAULT_DAEMON_BINARY
         self._daemon_pidfile = "/tmp/mongreldb-hermes.pid"
         self._daemon_log = "/tmp/mongreldb-hermes.log"
         self._daemon_auth_token: Optional[str] = None
+        self._encryption = DEFAULT_ENCRYPTION
         self._embedding_model_name = None
         self._embedder: Optional[_Embedder] = None
         self._dim = 0
@@ -191,6 +209,16 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         ).lower()
         if self._mode not in {"native", "daemon"}:
             raise ValueError("MongrelDB mode must be 'native' or 'daemon'")
+        self._encryption = _normalize_encryption(
+            os.environ.get("MONGRELDB_ENCRYPTION")
+            or cfg_get(
+                config,
+                "memory",
+                "mongreldb_hermes",
+                "encryption",
+                default=DEFAULT_ENCRYPTION,
+            )
+        )
         if not self._db_dir:
             self._db_dir = (
                 os.environ.get("MONGRELDB_EMBEDDED_DIR")
@@ -219,7 +247,8 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         )
         self._daemon_binary = str(
             os.environ.get("MONGRELDB_DAEMON_BINARY")
-            or cfg_get(config, "memory", "mongreldb_hermes", "daemon_binary", default="")
+            or cfg_get(config, "memory", "mongreldb_hermes", "daemon_binary", default=DEFAULT_DAEMON_BINARY)
+            or DEFAULT_DAEMON_BINARY
         )
         self._daemon_pidfile = str(
             cfg_get(config, "memory", "mongreldb_hermes", "daemon_pidfile", default=self._daemon_pidfile)
@@ -233,11 +262,15 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             or None
         )
         # Prefer env for secrets; config keys supported for local/dev only.
-        self._passphrase = (
-            os.environ.get("MONGRELDB_PASSPHRASE")
-            or cfg_get(config, "memory", "mongreldb_hermes", "passphrase", default=None)
-            or None
+        configured_passphrase = os.environ.get("MONGRELDB_PASSPHRASE") or cfg_get(
+            config, "memory", "mongreldb_hermes", "passphrase", default=None
         )
+        if self._encryption == "enabled":
+            from .install_mongreldb import load_or_create_passphrase
+
+            self._passphrase = configured_passphrase or load_or_create_passphrase(hermes_home)
+        else:
+            self._passphrase = None
         self._db_username = (
             os.environ.get("MONGRELDB_DB_USERNAME")
             or cfg_get(config, "memory", "mongreldb_hermes", "username", default=None)
@@ -256,14 +289,15 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
 
     def is_available(self) -> bool:
         try:
-            from hermes_cli.config import cfg_get, load_config
+            from .install_mongreldb import _platform_key
 
-            mode = os.environ.get("MONGRELDB_MODE") or cfg_get(
-                load_config(), "memory", "mongreldb_hermes", "mode", default="native"
-            )
-            return str(mode).lower() == "daemon" or _load_ffi().Database is not None
+            _platform_key()
+            return True
         except Exception:
-            return False
+            return bool(
+                os.environ.get("MONGRELDB_LIB")
+                or os.environ.get("MONGRELDB_DAEMON_BINARY")
+            )
 
     def get_config_schema(self) -> List[Dict[str, Any]]:
         from hermes_constants import get_hermes_home
@@ -272,16 +306,22 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
         return [
             {"key": "mode", "description": "Memory mode: native = default, one process; daemon = shared by multiple clients", "default": "native", "choices": ["native", "daemon"]},
             {"key": "db_dir", "description": "MongrelDB embedded data directory", "default": default_db_dir},
+            {
+                "key": "encryption",
+                "description": "Encryption at rest: enabled = default; disabled = plaintext",
+                "default": DEFAULT_ENCRYPTION,
+                "choices": ["enabled", "disabled"],
+            },
             {"key": "embedding_model", "description": "Sentence-transformers model name (empty = dense disabled)", "default": DEFAULT_EMBEDDING_MODEL},
             {"key": "dim", "description": "Embedding dimension", "default": DEFAULT_DIM},
             {"key": "enrichment_mode", "description": "heuristic or llm", "default": "heuristic"},
             {"key": "daemon_url", "description": "MongrelDB daemon URL", "default": DEFAULT_DAEMON_URL, "when": {"mode": "daemon"}},
             {"key": "daemon_data_dir", "description": "Daemon data directory (blank uses db_dir)", "default": "", "when": {"mode": "daemon"}},
-            {"key": "daemon_binary", "description": "mongreldb-server path (blank connects to an existing daemon)", "default": "", "when": {"mode": "daemon"}},
+            {"key": "daemon_binary", "description": "mongreldb-server path", "default": DEFAULT_DAEMON_BINARY, "when": {"mode": "daemon"}},
             {"key": "daemon_pidfile", "description": "Daemon PID file", "default": self._daemon_pidfile, "when": {"mode": "daemon"}},
             {"key": "daemon_log", "description": "Daemon startup log", "default": self._daemon_log, "when": {"mode": "daemon"}},
             {"key": "daemon_auth_token", "description": "Optional daemon Bearer token", "secret": True, "env_var": "MONGRELDB_DAEMON_AUTH_TOKEN", "when": {"mode": "daemon"}},
-            {"key": "passphrase", "description": "AES-256-GCM at-rest passphrase", "secret": True, "env_var": "MONGRELDB_PASSPHRASE"},
+            {"key": "passphrase", "description": "Encryption passphrase (blank = generate securely)", "secret": True, "env_var": "MONGRELDB_PASSPHRASE", "when": {"encryption": "enabled"}},
             {"key": "username", "description": "Optional DB username (with password; prefer MONGRELDB_DB_USERNAME)", "default": ""},
             {"key": "password", "description": "Optional DB password", "secret": True, "env_var": "MONGRELDB_DB_PASSWORD"},
         ]
@@ -289,12 +329,25 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
     def save_config(self, values: Dict[str, Any], hermes_home: str) -> None:
         from hermes_cli.config import load_config, save_config
 
+        _, server = _install_binaries()
+        values = dict(values)
+        values["encryption"] = _normalize_encryption(values.get("encryption"))
+        if (
+            values["encryption"] == "enabled"
+            and not values.get("passphrase")
+            and not os.environ.get("MONGRELDB_PASSPHRASE")
+        ):
+            from .install_mongreldb import load_or_create_passphrase
+
+            load_or_create_passphrase(hermes_home)
+        values["daemon_binary"] = values.get("daemon_binary") or server
         config = load_config()
         config.setdefault("memory", {})[self.name] = values
         save_config(config)
 
     def initialize(self, session_id: str, **kwargs) -> None:
         hermes_home = str(kwargs.get("hermes_home", ""))
+        _install_binaries()
         self._resolve_config(hermes_home)
         if self._mode == "native":
             os.makedirs(self._db_dir, exist_ok=True)

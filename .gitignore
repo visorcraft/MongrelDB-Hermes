@@ -62,6 +62,7 @@ mongreldb_*_data/
 *.dylib
 *.dll
 libmongreldb*
+vendor/
 
 # Daemon runtime
 *.pid

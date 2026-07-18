@@ -11,16 +11,22 @@ MongrelDB. It stores and retrieves agent memories using either:
 - **Native mode** — in-process `libmongreldb.so` (C FFI), or
 - **Daemon mode** — HTTP client to `mongreldb-server`.
 
-The plugin holds no long-term encryption keys of its own. Data at rest lives
-in the MongrelDB data directory (or the daemon’s data directory). Optional
-dense embeddings may be produced by a local model (for example via
-`sentence-transformers`); that inference runs in the Hermes process.
+Encryption at rest is enabled by default. When no passphrase is supplied, the
+plugin generates one in `~/.hermes/mongreldb_hermes.key` with mode `0600` and
+uses it for native and daemon opens. Data at rest lives in the MongrelDB data
+directory. Optional dense embeddings may be produced by a local model (for
+example via `sentence-transformers`); that inference runs in the Hermes
+process.
 
 ## Plugin security properties
 
 - **Filesystem.** Native mode opens a MongrelDB data directory under a
   configured path (default under Hermes home). Secure that directory with
   host permissions appropriate for memory content.
+- **Encryption key.** Back up `mongreldb_hermes.key` with the database. Losing
+  the key makes encrypted data unreadable. Set `MONGRELDB_PASSPHRASE` to
+  supply your own secret. Plaintext requires the explicit
+  `encryption: disabled` or `MONGRELDB_ENCRYPTION=disabled` opt-out.
 - **Network.** Daemon mode talks to `mongreldb-server` over plain HTTP. The
   daemon binds to `127.0.0.1` by default — traffic stays on the loopback
   interface. For remote or multi-tenant deployments, terminate TLS in a
