@@ -33,7 +33,7 @@ Hermes memory needs more than a plain vector store. Useful long-term memory for 
 
 MongrelDB is built around multiple AI-native indexes in one engine, so a single query can combine all of these signals. Most alternatives only provide dense vector search; frameworks like Mem0 compose several separate databases to approximate the same thing.
 
-**Encryption at rest** is a first-class engine feature: optional **AES-256-GCM** for sorted-run pages, WAL frames, and related on-disk artifacts (with passphrase- or key-based open). Agent memory on disk is not left as cleartext blobs by default when encryption is enabled - a meaningful gap versus many vector-store and SQLite-backed memory stacks that only encrypt if you bolt on filesystem or volume encryption.
+**Encryption at rest is on by default:** MongrelDB uses **AES-256-GCM** for sorted-run pages, WAL frames, and related on-disk artifacts (passphrase- or key-based open). You can opt out into a plaintext database if you explicitly choose to; you do not have to bolt on volume encryption just to get sealed agent memory on disk - a meaningful gap versus many vector-store and SQLite-backed memory stacks.
 
 ## What It Provides
 
@@ -47,6 +47,7 @@ A hybrid memory store with multiple index types:
 | Metadata filtering | **Bitmap** indexes | `memory_type`, `state`, `project`, `user` |
 | Time / importance / score | **PGM learned range** | Recency, importance, confidence, reinforcement |
 | Duplicate detection | **MinHash** | Near-duplicate consolidation at ingestion |
+| Confidentiality on disk | **AES-256-GCM encryption at rest** | On by default for sorted runs, WAL, and caches; plaintext is the opt-out |
 
 Two execution modes (configure `mode: native` or `mode: daemon`):
 
