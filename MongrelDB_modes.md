@@ -100,8 +100,9 @@ The provider uses the typed `/kit/create_table`, `/kit/txn`, `/kit/query`, and `
 ### Important notes
 
 - The installer downloads the daemon before saving memory configuration, or on first provider start if setup was skipped.
-- Encryption is enabled by default. The plugin creates `~/.hermes/mongreldb_hermes.key` with mode `0600` when no passphrase is supplied. Back it up with the database.
-- Set `encryption: disabled` or `MONGRELDB_ENCRYPTION=disabled` only to opt into plaintext storage.
+- Encryption is enabled by default for new data directories. The plugin creates `~/.hermes/mongreldb_hermes.key` with mode `0600` when no passphrase is supplied. Back it up with the database.
+- Existing directories open by on-disk layout (`_meta/keys` = encrypted). A passphrase is required only for encrypted roots; plaintext roots open without encryption even if a passphrase is configured.
+- Set `encryption: disabled` or `MONGRELDB_ENCRYPTION=disabled` only to opt into plaintext storage for new creates.
 - The daemon and native modes cannot share the same `db_dir` at the same time.
 - The daemon keeps the database open, so its shutdown is managed by the daemon, not by Hermes.
 

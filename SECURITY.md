@@ -8,13 +8,15 @@ Hermes Agent and how to report vulnerabilities.
 This repository is a Hermes Agent **memory provider plugin** backed by
 MongrelDB. It stores and retrieves agent memories using either:
 
-- **Native mode** — in-process `libmongreldb.so` (C FFI), or
-- **Daemon mode** — HTTP client to `mongreldb-server`.
+- **Native mode** - in-process `libmongreldb.so` (C FFI), or
+- **Daemon mode** - HTTP client to `mongreldb-server`.
 
-Encryption at rest is enabled by default. When no passphrase is supplied, the
-plugin generates one in `~/.hermes/mongreldb_hermes.key` with mode `0600` and
-uses it for native and daemon opens. Data at rest lives in the MongrelDB data
-directory. Dense embeddings are enabled by default and produced locally with
+Encryption at rest is enabled by default for new data directories. When no
+passphrase is supplied, the plugin generates one in
+`~/.hermes/mongreldb_hermes.key` with mode `0600` and uses it for encrypted
+create/open. Existing directories are opened by on-disk layout (`_meta/keys`
+means encrypted). Data at rest lives in the MongrelDB data directory. Dense
+embeddings are enabled by default and produced locally with
 `sentence-transformers`; that inference runs in the Hermes process.
 
 ## Plugin security properties
@@ -27,7 +29,7 @@ directory. Dense embeddings are enabled by default and produced locally with
   supply your own secret. Plaintext requires the explicit
   `encryption: disabled` or `MONGRELDB_ENCRYPTION=disabled` opt-out.
 - **Network.** Daemon mode talks to `mongreldb-server` over plain HTTP. The
-  daemon binds to `127.0.0.1` by default — traffic stays on the loopback
+  daemon binds to `127.0.0.1` by default - traffic stays on the loopback
   interface. For remote or multi-tenant deployments, terminate TLS in a
   reverse proxy (nginx, Caddy) in front of the daemon and enable daemon
   authentication.
@@ -45,10 +47,10 @@ directory. Dense embeddings are enabled by default and produced locally with
 
 The plugin is a client of MongrelDB. Typical `mongreldb-server` posture:
 
-- Binds to `127.0.0.1` only by default — not accessible from other machines.
-- **No authentication by default** — any local process can query, write, or
+- Binds to `127.0.0.1` only by default - not accessible from other machines.
+- **No authentication by default** - any local process can query, write, or
   delete data. Enable daemon auth on any shared host.
-- No TLS on the raw daemon port — use a reverse proxy for remote access.
+- No TLS on the raw daemon port - use a reverse proxy for remote access.
 
 Do not expose the daemon directly to an untrusted network.
 
@@ -57,7 +59,7 @@ Do not expose the daemon directly to an untrusted network.
 - Memories may contain user or agent secrets. Treat the data directory and
   backups as sensitive.
 - Query and write paths use the MongrelDB Kit/FFI APIs with typed cells and
-  structured search requests — not string-concatenated SQL from this plugin’s
+  structured search requests - not string-concatenated SQL from this plugin's
   hybrid search path. Prefer the documented APIs over ad-hoc SQL when
   integrating.
 
@@ -73,7 +75,7 @@ when they are not specific to this plugin.
 ## Reporting a vulnerability
 
 **Do not file a public GitHub issue, discussion, or pull request for
-security problems.** Report privately through **GitHub’s private
+security problems.** Report privately through **GitHub's private
 vulnerability reporting** on this repository:
 
 1. Open https://github.com/visorcraft/MongrelDB-Hermes/security/advisories/new  

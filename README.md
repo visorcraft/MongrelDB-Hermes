@@ -56,7 +56,7 @@ Hermes memory needs more than a plain vector store. Useful long-term memory for 
 
 MongrelDB is built around multiple AI-native indexes in one engine, so a single query can combine all of these signals. Most alternatives only provide dense vector search; frameworks like Mem0 compose several separate databases to approximate the same thing.
 
-**Encryption at rest is on by default:** the plugin creates a random passphrase in `~/.hermes/mongreldb_hermes.key` with mode `0600`, then uses MongrelDB's **AES-256-GCM** encrypted create/open path in both native and daemon modes. Set `encryption: disabled` only when plaintext storage is intentional.
+**Encryption at rest is on by default:** the plugin creates a random passphrase in `~/.hermes/mongreldb_hermes.key` with mode `0600`, then uses MongrelDB's **AES-256-GCM** encrypted create path for new data directories in both native and daemon modes. Existing directories are opened by on-disk layout (`_meta/keys` means encrypted); a passphrase is required only when the directory is already encrypted. Set `encryption: disabled` only when plaintext storage is intentional.
 
 ## What It Provides
 
@@ -89,7 +89,7 @@ Two execution modes (configure `mode: native` or `mode: daemon`):
 - Linux x64 glibc/musl, Linux arm64 glibc, or macOS x64/arm64
 - `sentence-transformers` when dense ANN is enabled; Hermes installs it automatically during memory setup
 
-Plugin 1.0.3 targets MongrelDB 0.60.3 and [MongrelDB Kit 0.60.3](https://crates.io/crates/mongreldb-kit/0.60.3). When memory settings are saved, or on first provider start if setup was skipped, it downloads the matching native archive and daemon binary from the [MongrelDB 0.60.3 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.60.3). It verifies both SHA-256 digests, keeps only the shared library and `mongreldb-server`, and deletes the downloads. The plugin uses Kit through the daemon HTTP API, so no separate Kit library is installed.
+Plugin 1.0.4 targets MongrelDB 0.60.3 and [MongrelDB Kit 0.60.3](https://crates.io/crates/mongreldb-kit/0.60.3). When memory settings are saved, or on first provider start if setup was skipped, it downloads the matching native archive and daemon binary from the [MongrelDB 0.60.3 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.60.3). It verifies both SHA-256 digests, keeps only the shared library and `mongreldb-server`, and deletes the downloads. The plugin uses Kit through the daemon HTTP API, so no separate Kit library is installed.
 
 Dense setup automatically installs `sentence-transformers` into the Hermes environment and downloads `all-MiniLM-L6-v2`. Sparse setup skips both.
 
@@ -143,7 +143,13 @@ Opt out of dense ANN in manual config:
 
 ### Encryption key and credentials
 
-Encryption at rest and username/password credentials are **orthogonal**. With encryption enabled, a missing passphrase creates and reuses `~/.hermes/mongreldb_hermes.key` in both modes. Back up this file with the database. Losing it makes the encrypted database unreadable.
+Encryption at rest and username/password credentials are **orthogonal**. With encryption enabled, a missing passphrase creates and reuses `~/.hermes/mongreldb_hermes.key` in both modes for new creates. Back up this file with the database. Losing it makes an encrypted database unreadable.
+
+**Open rules for an existing data directory:**
+
+- If `_meta/keys` is present, the root is encrypted: a passphrase is required (config, `MONGRELDB_PASSPHRASE`, or the key file).
+- If `_meta/keys` is absent, the root is plaintext: open without encryption even when a passphrase is configured for future creates.
+- This avoids failing when config has `encryption: enabled` but the directory was created without encryption.
 
 | Layer | What it protects | How you set it |
 |-------|------------------|----------------|
@@ -169,8 +175,8 @@ export MONGRELDB_DB_PASSWORD='choose-a-strong-password'
   --pidfile /tmp/mongreldb-hermes.pid
 ```
 
-- **`--passphrase`** (or equivalent env) selects the encryption key material for create/open.
-- **`MONGRELDB_DB_USERNAME` / `MONGRELDB_DB_PASSWORD`** (when set together) create/open an **encrypted+credentialed** database - auth on top of encryption.
+- **`--passphrase`** (or equivalent env) selects encryption key material for new creates and for opening encrypted roots.
+- **`MONGRELDB_DB_USERNAME` / `MONGRELDB_DB_PASSWORD`** (when set together) create/open a **credentialed** database - auth on top of encryption when the root is encrypted.
 - HTTP-facing daemon auth is separate again: e.g. **`--auth-token`** (Bearer) or **`--auth-users`** (Basic) for the Kit/SQL HTTP surface. Prefer not exposing the daemon off loopback without a reverse proxy + TLS.
 - Set `MONGRELDB_DAEMON_AUTH_TOKEN` when the daemon uses `--auth-token`.
 
@@ -178,7 +184,7 @@ See the engine docs: [Encryption](https://github.com/visorcraft/MongrelDB/blob/v
 
 #### Native mode (`libmongreldb.so`)
 
-Native opens go through the encrypted C ABI by default. The plugin generates or loads the passphrase before opening the database, so a missing secret never silently creates plaintext. Set `encryption: disabled` or `MONGRELDB_ENCRYPTION=disabled` to opt out explicitly. Prefer environment variables (`MONGRELDB_PASSPHRASE`, `MONGRELDB_DB_USERNAME`, `MONGRELDB_DB_PASSWORD`) over committing secrets in `config.yaml`.
+Native mode generates or loads the passphrase when encryption is enabled, then creates new roots with the encrypted C ABI. Existing roots follow the open rules above (encrypted only when `_meta/keys` is present). A missing secret never silently creates a *new* plaintext root under `encryption: enabled`. Set `encryption: disabled` or `MONGRELDB_ENCRYPTION=disabled` to opt out explicitly. Prefer environment variables (`MONGRELDB_PASSPHRASE`, `MONGRELDB_DB_USERNAME`, `MONGRELDB_DB_PASSWORD`) over committing secrets in `config.yaml`.
 
 ### Restart Hermes
 
@@ -243,7 +249,7 @@ See [MongrelDB_modes.md](MongrelDB_modes.md). Helper scripts: `start_daemon.sh`,
 
 - Set `MONGRELDB_LIB` only to override the bundled shared library.
 - A MongrelDB path is a **data directory**, not a single file.
-- Do not invent weak hashed dense vectors to “fake” ANN; prefer sparse retrieval when no real model is available.
+- Do not invent weak hashed dense vectors to "fake" ANN; prefer sparse retrieval when no real model is available.
 
 ## License
 

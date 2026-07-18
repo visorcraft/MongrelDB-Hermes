@@ -52,7 +52,7 @@ If you also add `memory_type` or `state` filters, they are applied as hard `must
 
 ## Performance expectations
 
-With `all-MiniLM-L6-v2` on a modern CPU, expect roughly 20–30 ms per insert or search. The database itself is under 1 ms; the embedding model dominates the latency.
+With `all-MiniLM-L6-v2` on a modern CPU, expect roughly 20-30 ms per insert or search. The database itself is under 1 ms; the embedding model dominates the latency.
 
 Measured on a 50-entry synthetic dataset, 5 topics, top_k=5, native FFI, warm model cache:
 
@@ -98,5 +98,5 @@ memory:
 
 - Users ask vague, conversational questions.
 - Memories are long and varied in wording.
-- You can tolerate 20–30 ms per operation.
+- You can tolerate 20-30 ms per operation.
 - You want to retrieve memories the user did not explicitly tag.

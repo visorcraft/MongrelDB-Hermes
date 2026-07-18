@@ -25,7 +25,7 @@ fi
 
 echo "Starting MongrelDB daemon on port $PORT..."
 # Detach from the terminal so the daemon keeps running after the script exits.
-setsid "$BIN" "$DATA_DIR" "$PORT" "${ENCRYPTION_ARGS[@]}" --daemon --pidfile "$PIDFILE" > "$LOG" 2>&1 &
+setsid "$BIN" "$DATA_DIR" --port "$PORT" "${ENCRYPTION_ARGS[@]}" --daemon --pidfile "$PIDFILE" > "$LOG" 2>&1 &
 unset PASSPHRASE
 
 for _ in $(seq 1 50); do

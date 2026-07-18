@@ -66,7 +66,7 @@ export MONGRELDB_LIB=/path/to/MongrelDB/crates/mongreldb-ffi/target/release/libm
 
 ### Docs and manifests
 
-- Keep generic paths in docs (`/home/user/.hermes`, `/path/to/...`) — do not
+- Keep generic paths in docs (`/home/user/.hermes`, `/path/to/...`) - do not
   commit machine-specific home directories.
 - Keep `plugin.yaml` version and hooks aligned with provider behavior.
 - README layout follows the MongrelDB Kit style (centered mascot, tables,

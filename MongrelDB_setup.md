@@ -66,7 +66,7 @@ memory:
 
 For optional LLM enrichment, configure `llm_base_url` and `llm_model`, then set `MONGRELDB_LLM_API_KEY` or `OPENAI_API_KEY`. Override them with `MONGRELDB_LLM_BASE_URL` and `MONGRELDB_LLM_MODEL`.
 
-Encryption is enabled by default. If no passphrase is configured, the plugin creates `~/.hermes/mongreldb_hermes.key` with mode `0600`. Back up that key with the database. Set `encryption: disabled` only to opt into plaintext storage.
+Encryption is enabled by default for new data directories. If no passphrase is configured, the plugin creates `~/.hermes/mongreldb_hermes.key` with mode `0600`. Back up that key with the database. Existing directories open by on-disk layout: encrypted when `_meta/keys` is present, plaintext otherwise. Set `encryption: disabled` only to opt into plaintext storage for new creates.
 
 ## 3. Verify installation
 
@@ -87,7 +87,7 @@ MongrelDB allows **one exclusive open of a given data directory** (storage root)
 That does **not** mean only one client can use MongrelDB:
 
 - **Native mode:** Hermes holds the exclusive open. Many threads inside Hermes can share it; a second Hermes process (or a daemon) pointing at the **same** `db_dir` will fail.
-- **Daemon mode:** `mongreldb-server` holds the exclusive open. Many Hermes (or other) clients talk to it over HTTP and share the cache — they must **not** also open the same directory with native FFI.
+- **Daemon mode:** `mongreldb-server` holds the exclusive open. Many Hermes (or other) clients talk to it over HTTP and share the cache - they must **not** also open the same directory with native FFI.
 
 If you switch native → daemon, stop the native Hermes process (or use a different data dir) before starting the server on that path.
 
