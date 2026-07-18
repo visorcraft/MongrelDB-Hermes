@@ -47,7 +47,7 @@ A hybrid memory store with multiple index types:
 
 Two execution modes (configure `mode: native` or `mode: daemon`):
 
-- **Native Rust FFI** (default): Hermes loads `libmongreldb.so` and opens the data directory **in-process** — lowest latency; that process owns the exclusive storage open for `db_dir`.
+- **Native Rust FFI** (default): Hermes loads `libmongreldb.so` and opens the data directory **in-process** - lowest latency; that process owns the exclusive storage open for `db_dir`.
 - **HTTP daemon**: Hermes is an HTTP client of `mongreldb-server`. The **daemon** owns the exclusive open; many processes can share the warm cache over HTTP. Do not also open the same data directory with native FFI while the daemon is running.
 
 Optional **dense ANN** when `embedding_model` is set (for example `all-MiniLM-L6-v2`, 384-d). Leave it empty for model-free hybrid sparse + lexical retrieval. MongrelDB core keeps embedding generation as a pluggable layer: applications may supply vectors, Kit/server may register providers, and ANN indexes operate only on stored vectors plus model metadata.
@@ -146,11 +146,11 @@ The plugin creates the database and table on first use.
 
 ## Documentation
 
-- [MongrelDB setup](MongrelDB_setup.md) — build and install steps
-- [Modes](MongrelDB_modes.md) — native FFI vs HTTP daemon
-- [Dense ANN](MongrelDB_dense.md) — enabling `all-MiniLM-L6-v2` and model policy
-- [Standalone Rust](MongrelDB_standalone.md) — using MongrelDB directly outside Hermes
-- [Engine embeddings & retrieval](https://github.com/visorcraft/MongrelDB/blob/master/docs/22-embeddings-and-retrieval.md) — pluggable `EmbeddingSource` / provider registry
+- [MongrelDB setup](MongrelDB_setup.md) - build and install steps
+- [Modes](MongrelDB_modes.md) - native FFI vs HTTP daemon
+- [Dense ANN](MongrelDB_dense.md) - enabling `all-MiniLM-L6-v2` and model policy
+- [Standalone Rust](MongrelDB_standalone.md) - using MongrelDB directly outside Hermes
+- [Engine embeddings & retrieval](https://github.com/visorcraft/MongrelDB/blob/master/docs/22-embeddings-and-retrieval.md) - pluggable `EmbeddingSource` / provider registry
 
 ## Modes
 
@@ -195,7 +195,7 @@ See [MongrelDB_modes.md](MongrelDB_modes.md). Helper scripts: `start_daemon.sh`,
 ## Current State
 
 - **Native FFI** path is the primary, tested mode (model-free and dense ANN with MiniLM).
-- **HTTP daemon** client support is present for multi-process deployments; use a current MongrelDB server build that includes the pluggable embedding layer.
+- **Daemon mode** is the supported way to share one data directory across processes (or keep a warm cache across Hermes restarts). Use a current `mongreldb-server` build; start it with `start_daemon.sh` or configure `daemon_*` keys and `mode: daemon`.
 - Align the linked `libmongreldb.so` / `mongreldb-server` with a MongrelDB release that ships the embedding provider registry (see engine docs).
 
 ## Development Notes
