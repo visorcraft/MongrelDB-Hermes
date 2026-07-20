@@ -74,7 +74,7 @@ Set `retrieval_mode: dense` and `embedding_model: "all-MiniLM-L6-v2"`, then rest
 
 ## Dense ANN with the daemon
 
-Dense ANN works in daemon mode too. The provider sends the computed embedding vector to the daemon, so the same model and `dim` settings apply. The daemon itself can also register local or remote embedding providers in MongrelDB's pluggable embedding layer, but the current provider always computes embeddings client-side before sending them.
+Dense ANN works in daemon mode too. The provider sends the computed embedding vector to the daemon, so the same model and `dim` settings apply. On new tables, daemon mode creates the ANN index with **Dense** (full-precision cosine) quantization when an embedding model is configured; native FFI uses the engine default **BinarySign** (Hamming) because the C ABI does not yet expose ANN options. Both accept client-supplied float embeddings. The daemon itself can also register local or remote embedding providers in MongrelDB's pluggable embedding layer, but the current provider always computes embeddings client-side before sending them.
 
 ```yaml
 memory:

@@ -9,7 +9,8 @@ DATA_DIR="$HERMES_DIR/mongreldb_hermes_data"
 PORT=8453
 PIDFILE="/tmp/mongreldb-hermes.pid"
 LOG="/tmp/mongreldb-hermes.log"
-BIN="$SCRIPT_DIR/vendor/0.60.3/mongreldb-server"
+VERSION="$(PYTHONPATH="$SCRIPT_DIR" python3 -c 'from install_mongreldb import VERSION; print(VERSION)')"
+BIN="$SCRIPT_DIR/vendor/$VERSION/mongreldb-server"
 ENCRYPTION_ARGS=()
 if [ "${MONGRELDB_ENCRYPTION:-enabled}" != "disabled" ]; then
     PASSPHRASE="${MONGRELDB_PASSPHRASE:-$(PYTHONPATH="$SCRIPT_DIR" python3 -c 'from install_mongreldb import load_or_create_passphrase; print(load_or_create_passphrase())')}"

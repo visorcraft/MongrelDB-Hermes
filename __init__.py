@@ -28,7 +28,11 @@ DEFAULT_DIM = 384
 DEFAULT_LLM_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_LLM_MODEL = "gpt-4.1-mini"
 DEFAULT_DAEMON_URL = "http://127.0.0.1:8453"
-DEFAULT_DAEMON_BINARY = os.path.join(os.path.dirname(__file__), "vendor", "0.60.3", "mongreldb-server")
+try:
+    from .install_mongreldb import VERSION as _MDB_VERSION
+except ImportError:
+    from install_mongreldb import VERSION as _MDB_VERSION  # type: ignore
+DEFAULT_DAEMON_BINARY = os.path.join(os.path.dirname(__file__), "vendor", _MDB_VERSION, "mongreldb-server")
 DEFAULT_ENCRYPTION = "enabled"
 TABLE_NAME = "hermes_memories"
 RESULT_COLUMNS = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17, 18]
@@ -679,6 +683,19 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
                 {"id": 17, "name": "supersedes", "ty": "bytes"},
                 {"id": 18, "name": "metadata_json", "ty": "bytes"},
             ]
+            # 0.61.x ANN defaults to BinarySign (Hamming). For dense MiniLM
+            # retrieval, request full-precision Dense cosine quantization via
+            # Kit index options (HTTP path supports options; C ABI does not yet).
+            ann_index = {"name": "embedding_ann", "column_id": 9, "kind": "ann"}
+            if self._embedding_model_name:
+                ann_index["options"] = {
+                    "ann": {
+                        "quantization": "dense",
+                        "m": 16,
+                        "ef_construction": 64,
+                        "ef_search": 64,
+                    }
+                }
             indexes = [
                 {"name": "raw_text_fm", "column_id": 2, "kind": "fm"},
                 {"name": "summary_fm", "column_id": 3, "kind": "fm"},
@@ -687,7 +704,7 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
                 {"name": "projects_mh", "column_id": 6, "kind": "minhash"},
                 {"name": "topics_mh", "column_id": 7, "kind": "minhash"},
                 {"name": "tags_mh", "column_id": 8, "kind": "minhash"},
-                {"name": "embedding_ann", "column_id": 9, "kind": "ann"},
+                ann_index,
                 {"name": "sparse_idx", "column_id": 10, "kind": "sparse"},
                 {"name": "importance_range", "column_id": 11, "kind": "learned_range"},
                 {"name": "confidence_range", "column_id": 12, "kind": "learned_range"},

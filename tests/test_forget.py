@@ -62,10 +62,21 @@ def test_native_forget_uses_table_delete_by_pk():
 
 def test_native_forget_round_trip_with_real_lib():
     """Insert + forget against a real libmongreldb if one is on the machine."""
+    root = Path(__file__).parents[1]
+    version = "0.61.1"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "install_mongreldb", root / "install_mongreldb.py"
+        )
+        install_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(install_mod)
+        version = install_mod.VERSION
+    except Exception:
+        pass
     candidates = [
         os.environ.get("MONGRELDB_LIB"),
-        str(Path.home() / ".hermes/plugins/mongreldb_hermes/vendor/0.60.3/libmongreldb.so"),
-        str(Path(__file__).parents[1] / "vendor/0.60.3/libmongreldb.so"),
+        str(Path.home() / f".hermes/plugins/mongreldb_hermes/vendor/{version}/libmongreldb.so"),
+        str(root / f"vendor/{version}/libmongreldb.so"),
     ]
     lib = next((path for path in candidates if path and os.path.isfile(path)), None)
     if not lib:
