@@ -18,11 +18,11 @@ Select `mongreldb_hermes`, listed as `local`. No API key is required. Choose `de
 
 Keep `heuristic` enrichment (default) for local, fast, private operation. `llm` is slower, requires an OpenAI-compatible API key, and sends memory text to that configured provider.
 
-Saving memory setup downloads both MongrelDB 0.62.0 runtime files for the current platform. If setup is skipped, first provider startup performs the same install. Downloads are SHA-256 verified and deleted after extraction. Only these files remain:
+Saving memory setup downloads both MongrelDB 0.63.1 runtime files for the current platform. If setup is skipped, first provider startup performs the same install. Downloads are SHA-256 verified and deleted after extraction. Only these files remain:
 
 ```
-vendor/0.62.0/libmongreldb.so
-vendor/0.62.0/mongreldb-server
+vendor/0.63.1/libmongreldb.so
+vendor/0.63.1/mongreldb-server
 ```
 
 macOS uses `libmongreldb.dylib` instead. Both files are installed even when native mode is selected, so changing modes requires no later download.
@@ -36,7 +36,7 @@ Directory layout after install:
 ├── after-install.md
 ├── install_mongreldb.py
 ├── plugin.yaml
-├── vendor/0.62.0/
+├── vendor/0.63.1/
 ├── README.md
 ├── MongrelDB_setup.md
 ├── MongrelDB_modes.md
@@ -104,7 +104,7 @@ Dense mode uses `all-MiniLM-L6-v2`; model inference is the insert bottleneck. Ch
 ```bash
 # Stop Hermes, then start the daemon manually
 export MONGRELDB_PASSPHRASE="$(cat ~/.hermes/mongreldb_hermes.key)"
-/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.62.0/mongreldb-server \
+/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.63.1/mongreldb-server \
     /home/user/.hermes/mongreldb_hermes_data \
     --port 8453 \
     --passphrase "$MONGRELDB_PASSPHRASE" \
@@ -123,11 +123,11 @@ memory:
     daemon_url: http://127.0.0.1:8453
     daemon_data_dir: /home/user/.hermes/mongreldb_hermes_data
     daemon_pidfile: /tmp/mongreldb-hermes.pid
-    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.62.0/mongreldb-server
+    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.63.1/mongreldb-server
 ```
 
 Restart Hermes.
 
 ## 6. Rebuilding after a MongrelDB upgrade
 
-MongrelDB's C ABI is still evolving. This plugin targets MongrelDB 0.62.0 and MongrelDB Kit 0.62.0. Update `_ffi.py` against the new `mongreldb.h` before changing either requirement.
+MongrelDB's C ABI is still evolving. This plugin targets MongrelDB 0.63.1 and MongrelDB Kit 0.63.1. Update `_ffi.py` against the new `mongreldb.h` before changing either requirement.

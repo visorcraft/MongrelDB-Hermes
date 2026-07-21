@@ -74,11 +74,13 @@ Set `retrieval_mode: dense` and `embedding_model: "all-MiniLM-L6-v2"`, then rest
 
 ## Dense ANN (native and daemon)
 
-When an embedding model is configured, **new tables** create the `embedding_ann` index with **Dense** quantization (full-precision f32 cosine ANN): `m=16`, `ef_construction=64`, `ef_search=64`. Native mode uses `mongreldb_schema_add_index_v2` / `MDB_ANN_QUANTIZATION_DENSE`; daemon mode passes the same options through `/kit/create_table`.
+When an embedding model is configured, **new tables** create the `embedding_ann` index with **Dense** quantization (full-precision f32 cosine ANN) on the default **HNSW** algorithm: `m=16`, `ef_construction=64`, `ef_search=64`. Native mode uses `mongreldb_schema_add_index_v2` / `MDB_ANN_QUANTIZATION_DENSE`; daemon mode passes the same options through `/kit/create_table`.
+
+MongrelDB 0.63+ also offers DiskANN, IVF, and product quantization via `mongreldb_schema_add_index_v3` / Kit options; this plugin keeps Dense HNSW as the memory default.
 
 The embedding column is tagged `supplied_by_application`: Hermes computes vectors with `sentence-transformers` and writes them on insert. MongrelDB also supports server-configured sources (`configured_model` with `provider_id` / `model_id` / `model_version`); that path is not the default for this plugin.
 
-Sparse setup (no embedding model) leaves ANN at the engine default (BinarySign) and does not set an embedding source.
+Sparse setup (no embedding model) leaves ANN at the engine default (BinarySign HNSW) and does not set an embedding source.
 
 ```yaml
 memory:
