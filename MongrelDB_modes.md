@@ -110,7 +110,7 @@ The provider uses the typed `/kit/create_table`, `/kit/txn`, `/kit/query`, and `
 
 MongrelDB includes a pluggable embedding layer. The daemon can register local or remote embedding providers, so the server itself can compute vectors rather than requiring the client to supply them. This is useful if you want to centralize model management in the daemon.
 
-For the `mongreldb-hermes` provider, the default behavior is still client-supplied vectors: the provider computes embeddings locally with `sentence-transformers` and sends them to the daemon. If you want to use a daemon-registered provider instead, you would configure the `hermes_memories` table with an `EmbeddingSource::GeneratedColumn` source and leave the embedding column empty on insert. That path is not yet wired in the plugin.
+For the `mongreldb-hermes` provider, the default is still client-supplied vectors (`supplied_by_application`): the provider computes embeddings locally with `sentence-transformers` and writes them on insert (native FFI and daemon). A daemon-registered `configured_model` / generated-column source is supported by the engine but is not the plugin default.
 
 ## Switching modes
 

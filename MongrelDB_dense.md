@@ -72,9 +72,13 @@ If you want semantic recall but lower latency, the best paths are:
 
 Set `retrieval_mode: dense` and `embedding_model: "all-MiniLM-L6-v2"`, then restart Hermes. The existing schema already has a nullable embedding column and ANN index. New memories receive embeddings; existing memories are not backfilled automatically.
 
-## Dense ANN with the daemon
+## Dense ANN (native and daemon)
 
-Dense ANN works in daemon mode too. The provider sends the computed embedding vector to the daemon, so the same model and `dim` settings apply. On new tables, daemon mode creates the ANN index with **Dense** (full-precision cosine) quantization when an embedding model is configured; native FFI uses the engine default **BinarySign** (Hamming) because the C ABI does not yet expose ANN options. Both accept client-supplied float embeddings. The daemon itself can also register local or remote embedding providers in MongrelDB's pluggable embedding layer, but the current provider always computes embeddings client-side before sending them.
+When an embedding model is configured, **new tables** create the `embedding_ann` index with **Dense** quantization (full-precision f32 cosine ANN): `m=16`, `ef_construction=64`, `ef_search=64`. Native mode uses `mongreldb_schema_add_index_v2` / `MDB_ANN_QUANTIZATION_DENSE`; daemon mode passes the same options through `/kit/create_table`.
+
+The embedding column is tagged `supplied_by_application`: Hermes computes vectors with `sentence-transformers` and writes them on insert. MongrelDB also supports server-configured sources (`configured_model` with `provider_id` / `model_id` / `model_version`); that path is not the default for this plugin.
+
+Sparse setup (no embedding model) leaves ANN at the engine default (BinarySign) and does not set an embedding source.
 
 ```yaml
 memory:

@@ -44,6 +44,10 @@ MDB_VECTOR_COSINE = 0
 MDB_COL_NULLABLE = 1
 MDB_COL_PRIMARY_KEY = 2
 
+# ANN index quantization (mongreldb_ann_quantization, 0.62+).
+MDB_ANN_QUANTIZATION_BINARY_SIGN = 0
+MDB_ANN_QUANTIZATION_DENSE = 1
+
 MDB_VALUE_NULL = 0
 MDB_VALUE_INT64 = 2
 MDB_VALUE_BYTES = 4
@@ -152,6 +156,27 @@ class _IndexDef(Structure):
     _fields_ = [("name", c_char_p), ("column_id", c_uint16), ("kind", c_int32)]
 
 
+class _IndexOptionsV1(Structure):
+    """mongreldb_index_options_v1 — versioned kind-specific index options (0.62+).
+
+    Zero numeric fields select engine defaults. ``ann_quantization`` is always
+    interpreted (0 = BinarySign, 1 = Dense full-f32 cosine).
+    """
+
+    _fields_ = [
+        ("struct_size", c_size_t),
+        ("version", c_uint32),
+        ("predicate", c_char_p),
+        ("ann_m", c_size_t),
+        ("ann_ef_construction", c_size_t),
+        ("ann_ef_search", c_size_t),
+        ("ann_quantization", c_int32),
+        ("minhash_permutations", c_size_t),
+        ("minhash_bands", c_size_t),
+        ("learned_range_epsilon", c_size_t),
+    ]
+
+
 class _Cell(Structure):
     _fields_ = [("column_id", c_uint16), ("value", _CValue)]
 
@@ -244,6 +269,14 @@ _lib.mongreldb_schema_add_column.restype = c_int32
 _lib.mongreldb_schema_add_column.argtypes = [c_void_p, POINTER(_ColumnDef)]
 _lib.mongreldb_schema_add_index.restype = c_int32
 _lib.mongreldb_schema_add_index.argtypes = [c_void_p, POINTER(_IndexDef)]
+_lib.mongreldb_schema_add_index_v2.restype = c_int32
+_lib.mongreldb_schema_add_index_v2.argtypes = [
+    c_void_p,
+    POINTER(_IndexDef),
+    POINTER(_IndexOptionsV1),
+]
+_lib.mongreldb_schema_set_embedding_source_json.restype = c_int32
+_lib.mongreldb_schema_set_embedding_source_json.argtypes = [c_void_p, c_uint16, c_char_p]
 _lib.mongreldb_schema_build.restype = c_void_p
 _lib.mongreldb_schema_build.argtypes = [c_void_p]
 _lib.mongreldb_schema_free.restype = None
@@ -452,17 +485,77 @@ class Database:
         return _check_ptr(_lib.mongreldb_database_table(self._ptr, name.encode("utf-8")), "Database.table")
 
 
+def _embedding_source_json(source) -> bytes:
+    """Serialize an EmbeddingSource for ``mongreldb_schema_set_embedding_source_json``.
+
+    Accepts a JSON string or a mapping. Engine wire format (tag = ``kind``):
+
+    - ``{"kind":"supplied_by_application"}`` — client supplies float vectors
+    - ``{"kind":"configured_model","provider_id":"...","model_id":"...","model_version":"..."}``
+    """
+    import json
+
+    if isinstance(source, (bytes, bytearray)):
+        return bytes(source)
+    if isinstance(source, str):
+        return source.encode("utf-8")
+    if isinstance(source, dict):
+        return json.dumps(source, separators=(",", ":")).encode("utf-8")
+    raise MongrelDBError(f"unsupported embedding_source type: {type(source)}")
+
+
+def _index_options_v1(opts: dict, backing: list) -> _IndexOptionsV1:
+    """Build a versioned index-options struct from a Python dict."""
+    options = _IndexOptionsV1()
+    options.struct_size = ctypes.sizeof(_IndexOptionsV1)
+    options.version = 1
+    options.predicate = None
+    if opts.get("predicate"):
+        pred = opts["predicate"].encode("utf-8")
+        backing.append(pred)
+        options.predicate = pred
+    options.ann_m = int(opts.get("ann_m", opts.get("m", 0)) or 0)
+    options.ann_ef_construction = int(
+        opts.get("ann_ef_construction", opts.get("ef_construction", 0)) or 0
+    )
+    options.ann_ef_search = int(opts.get("ann_ef_search", opts.get("ef_search", 0)) or 0)
+    quant = opts.get("ann_quantization", opts.get("quantization", MDB_ANN_QUANTIZATION_BINARY_SIGN))
+    if isinstance(quant, str):
+        quant_key = quant.strip().lower().replace("-", "_")
+        if quant_key in {"dense", "mdb_ann_quantization_dense"}:
+            quant = MDB_ANN_QUANTIZATION_DENSE
+        elif quant_key in {"binary_sign", "binary", "mdb_ann_quantization_binary_sign"}:
+            quant = MDB_ANN_QUANTIZATION_BINARY_SIGN
+        else:
+            raise MongrelDBError(f"unknown ANN quantization: {quant}")
+    options.ann_quantization = int(quant)
+    options.minhash_permutations = int(opts.get("minhash_permutations", 0) or 0)
+    options.minhash_bands = int(opts.get("minhash_bands", 0) or 0)
+    options.learned_range_epsilon = int(opts.get("learned_range_epsilon", 0) or 0)
+    return options
+
+
 class Schema:
     def __init__(self, ptr):
         self._ptr = ptr
 
     @classmethod
     def build(cls, columns, indexes):
+        """Build a table schema.
+
+        Column dicts may include ``embedding_source`` (JSON str or mapping) for
+        embedding columns. Index dicts may include ``options`` for ANN / MinHash /
+        learned-range parameters (uses ``mongreldb_schema_add_index_v2``).
+        """
         b = _check_ptr(_lib.mongreldb_schema_begin(), "schema_begin")
+        # Keep encoded strings alive until schema_build returns.
+        backing = []
         for col in columns:
             d = _ColumnDef()
             d.id = col["id"]
-            d.name = col["name"].encode("utf-8")
+            name = col["name"].encode("utf-8")
+            backing.append(name)
+            d.name = name
             d.ty = col["ty"]
             d.flags = col.get("flags", 0)
             d.embedding_dim = col.get("embedding_dim", 0)
@@ -471,15 +564,43 @@ class Schema:
             d.enum_variants.items = None
             d.enum_variants.len = 0
             _check(_lib.mongreldb_schema_add_column(b, byref(d)), "schema_add_column")
+            if col.get("embedding_source") is not None:
+                source = _embedding_source_json(col["embedding_source"])
+                backing.append(source)
+                _check(
+                    _lib.mongreldb_schema_set_embedding_source_json(
+                        b, int(col["id"]), source
+                    ),
+                    "schema_set_embedding_source_json",
+                )
         for idx in indexes:
             i = _IndexDef()
-            i.name = idx["name"].encode("utf-8")
+            name = idx["name"].encode("utf-8")
+            backing.append(name)
+            i.name = name
             i.column_id = idx["column_id"]
             i.kind = idx["kind"]
-            _check(_lib.mongreldb_schema_add_index(b, byref(i)), "schema_add_index")
+            opts = idx.get("options")
+            if opts:
+                # Nested Kit-style {"ann": {...}} is accepted for convenience.
+                if "ann" in opts and isinstance(opts["ann"], dict):
+                    merged = dict(opts["ann"])
+                    if opts.get("predicate") is not None:
+                        merged.setdefault("predicate", opts["predicate"])
+                    opts = merged
+                options = _index_options_v1(opts, backing)
+                backing.append(options)
+                _check(
+                    _lib.mongreldb_schema_add_index_v2(b, byref(i), byref(options)),
+                    "schema_add_index_v2",
+                )
+            else:
+                _check(_lib.mongreldb_schema_add_index(b, byref(i)), "schema_add_index")
         ptr = _lib.mongreldb_schema_build(b)
         if not ptr:
             raise MongrelDBError("schema_build failed")
+        # Drop local string refs after the schema is owned by the engine.
+        del backing
         obj = cls(ptr)
         obj._consumed = False
         return obj

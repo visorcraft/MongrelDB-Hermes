@@ -527,6 +527,24 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
                 password=self._db_password,
             )
             if not exists:
+                # Dense MiniLM path: client-supplied f32 vectors + full-precision
+                # Dense (cosine) ANN via mongreldb_schema_add_index_v2 (0.62+).
+                embedding_col = {
+                    "id": 9,
+                    "name": "embedding",
+                    "ty": ffi.MDB_TYPE_EMBEDDING,
+                    "embedding_dim": self._dim,
+                    "flags": ffi.MDB_COL_NULLABLE,
+                }
+                ann_index = {"name": "embedding_ann", "column_id": 9, "kind": ffi.MDB_INDEX_ANN}
+                if self._embedding_model_name:
+                    embedding_col["embedding_source"] = {"kind": "supplied_by_application"}
+                    ann_index["options"] = {
+                        "ann_m": 16,
+                        "ann_ef_construction": 64,
+                        "ann_ef_search": 64,
+                        "ann_quantization": ffi.MDB_ANN_QUANTIZATION_DENSE,
+                    }
                 schema = ffi.Schema.build(
                     columns=[
                         {"id": 1, "name": "id", "ty": ffi.MDB_TYPE_INT64, "flags": ffi.MDB_COL_PRIMARY_KEY},
@@ -537,7 +555,7 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
                         {"id": 6, "name": "projects", "ty": ffi.MDB_TYPE_BYTES},
                         {"id": 7, "name": "topics", "ty": ffi.MDB_TYPE_BYTES},
                         {"id": 8, "name": "tags", "ty": ffi.MDB_TYPE_BYTES},
-                        {"id": 9, "name": "embedding", "ty": ffi.MDB_TYPE_EMBEDDING, "embedding_dim": self._dim, "flags": ffi.MDB_COL_NULLABLE},
+                        embedding_col,
                         {"id": 10, "name": "sparse", "ty": ffi.MDB_TYPE_BYTES},
                         {"id": 11, "name": "importance", "ty": ffi.MDB_TYPE_INT64},
                         {"id": 12, "name": "confidence", "ty": ffi.MDB_TYPE_INT64},
@@ -556,7 +574,7 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
                         {"name": "projects_mh", "column_id": 6, "kind": ffi.MDB_INDEX_MIN_HASH},
                         {"name": "topics_mh", "column_id": 7, "kind": ffi.MDB_INDEX_MIN_HASH},
                         {"name": "tags_mh", "column_id": 8, "kind": ffi.MDB_INDEX_MIN_HASH},
-                        {"name": "embedding_ann", "column_id": 9, "kind": ffi.MDB_INDEX_ANN},
+                        ann_index,
                         {"name": "sparse_idx", "column_id": 10, "kind": ffi.MDB_INDEX_SPARSE},
                         {"name": "importance_range", "column_id": 11, "kind": ffi.MDB_INDEX_LEARNED_RANGE},
                         {"name": "confidence_range", "column_id": 12, "kind": ffi.MDB_INDEX_LEARNED_RANGE},
@@ -663,6 +681,24 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             self._start_daemon()
         tables = self._daemon_request("GET", "/tables")
         if TABLE_NAME not in tables:
+            embedding_col = {
+                "id": 9,
+                "name": "embedding",
+                "ty": f"embedding({self._dim})",
+                "nullable": True,
+            }
+            # Dense MiniLM: full-precision cosine ANN (same options as native FFI).
+            ann_index = {"name": "embedding_ann", "column_id": 9, "kind": "ann"}
+            if self._embedding_model_name:
+                embedding_col["embedding_source"] = {"kind": "supplied_by_application"}
+                ann_index["options"] = {
+                    "ann": {
+                        "quantization": "dense",
+                        "m": 16,
+                        "ef_construction": 64,
+                        "ef_search": 64,
+                    }
+                }
             columns = [
                 {"id": 1, "name": "id", "ty": "int64", "primary_key": True},
                 {"id": 2, "name": "raw_text", "ty": "bytes"},
@@ -672,7 +708,7 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
                 {"id": 6, "name": "projects", "ty": "bytes"},
                 {"id": 7, "name": "topics", "ty": "bytes"},
                 {"id": 8, "name": "tags", "ty": "bytes"},
-                {"id": 9, "name": "embedding", "ty": f"embedding({self._dim})", "nullable": True},
+                embedding_col,
                 {"id": 10, "name": "sparse", "ty": "bytes"},
                 {"id": 11, "name": "importance", "ty": "int64"},
                 {"id": 12, "name": "confidence", "ty": "int64"},
@@ -683,19 +719,6 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
                 {"id": 17, "name": "supersedes", "ty": "bytes"},
                 {"id": 18, "name": "metadata_json", "ty": "bytes"},
             ]
-            # 0.61.x ANN defaults to BinarySign (Hamming). For dense MiniLM
-            # retrieval, request full-precision Dense cosine quantization via
-            # Kit index options (HTTP path supports options; C ABI does not yet).
-            ann_index = {"name": "embedding_ann", "column_id": 9, "kind": "ann"}
-            if self._embedding_model_name:
-                ann_index["options"] = {
-                    "ann": {
-                        "quantization": "dense",
-                        "m": 16,
-                        "ef_construction": 64,
-                        "ef_search": 64,
-                    }
-                }
             indexes = [
                 {"name": "raw_text_fm", "column_id": 2, "kind": "fm"},
                 {"name": "summary_fm", "column_id": 3, "kind": "fm"},
