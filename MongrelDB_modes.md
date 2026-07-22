@@ -33,7 +33,7 @@ memory:
 
 ### Important limitation
 
-**Storage rule (still true in 0.63.x):** one process owns the exclusive open of a given data directory. Multiple threads may share that open **in-process**. A second independent open of the same root (another Hermes native process, or native + daemon on the same path) fails with `DatabaseLocked`.
+**Storage rule (still true in 0.64.x):** one process owns the exclusive open of a given data directory. Multiple threads may share that open **in-process**. A second independent open of the same root (another Hermes native process, or native + daemon on the same path) fails with `DatabaseLocked`.
 
 **Multi-process access** is the job of **daemon mode**: only `mongreldb-server` opens the root; any number of HTTP clients (Hermes included) share it.
 
@@ -67,7 +67,7 @@ memory:
     daemon_data_dir: /home/user/.hermes/mongreldb_hermes_data
     daemon_pidfile: /tmp/mongreldb-hermes.pid
     daemon_log: /tmp/mongreldb-hermes.log
-    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.63.1/mongreldb-server
+    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.2/mongreldb-server
     retrieval_mode: dense
     embedding_model: "all-MiniLM-L6-v2"
     dim: 384
@@ -77,7 +77,7 @@ memory:
 
 ```bash
 export MONGRELDB_PASSPHRASE="$(cat ~/.hermes/mongreldb_hermes.key)"
-/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.63.1/mongreldb-server \
+/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.2/mongreldb-server \
     /home/user/.hermes/mongreldb_hermes_data \
     --port 8453 \
     --passphrase "$MONGRELDB_PASSPHRASE" \

@@ -529,7 +529,7 @@ class MongrelDBHermesMemoryProvider(MemoryProvider):
             if not exists:
                 # Dense MiniLM path: client-supplied f32 vectors + full-precision
                 # Dense (cosine) HNSW ANN via mongreldb_schema_add_index_v2 (0.62+;
-                # still the preferred path on 0.63.x for HNSW + Dense).
+                # still the preferred path on 0.64.x for HNSW + Dense).
                 embedding_col = {
                     "id": 9,
                     "name": "embedding",
