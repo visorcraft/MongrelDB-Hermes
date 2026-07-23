@@ -63,7 +63,7 @@ def test_native_forget_uses_table_delete_by_pk():
 def test_native_forget_round_trip_with_real_lib():
     """Insert + forget against a real libmongreldb if one is on the machine."""
     root = Path(__file__).parents[1]
-    version = "0.64.4"
+    version = "0.64.5"
     try:
         spec = importlib.util.spec_from_file_location(
             "install_mongreldb", root / "install_mongreldb.py"

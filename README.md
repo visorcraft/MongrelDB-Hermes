@@ -89,7 +89,7 @@ Two execution modes (configure `mode: native` or `mode: daemon`):
 - Linux x64 glibc/musl, Linux arm64 glibc, or macOS x64/arm64
 - `sentence-transformers` when dense ANN is enabled; Hermes installs it automatically during memory setup
 
-Plugin 1.3.3 targets MongrelDB 0.64.4 and [MongrelDB Kit 0.64.4](https://crates.io/crates/mongreldb-kit/0.64.4). When memory settings are saved, or on first provider start if setup was skipped, it downloads the matching native archive and daemon binary from the [MongrelDB 0.64.4 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.64.4). It verifies both SHA-256 digests, keeps only the shared library and `mongreldb-server`, and deletes the downloads. The plugin uses Kit through the daemon HTTP API, so no separate Kit library is installed.
+Plugin 1.3.4 targets MongrelDB 0.64.5 and [MongrelDB Kit 0.64.5](https://crates.io/crates/mongreldb-kit/0.64.5). When memory settings are saved, or on first provider start if setup was skipped, it downloads the matching native archive and daemon binary from the [MongrelDB 0.64.5 release](https://github.com/visorcraft/MongrelDB/releases/tag/v0.64.5). It verifies both SHA-256 digests, keeps only the shared library and `mongreldb-server`, and deletes the downloads. The plugin uses Kit through the daemon HTTP API, so no separate Kit library is installed.
 
 Dense setup automatically installs `sentence-transformers` into the Hermes environment and downloads `all-MiniLM-L6-v2`. Sparse setup skips both.
 
@@ -126,7 +126,7 @@ memory:
     daemon_data_dir: /home/user/.hermes/mongreldb_hermes_data
     daemon_pidfile: /tmp/mongreldb-hermes.pid
     daemon_log: /tmp/mongreldb-hermes.log
-    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.4/mongreldb-server
+    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.5/mongreldb-server
 ```
 
 The bundled daemon is the default. Set `MONGRELDB_DAEMON_BINARY` to use another binary.
@@ -167,7 +167,7 @@ export MONGRELDB_PASSPHRASE='choose-a-long-random-passphrase'
 export MONGRELDB_DB_USERNAME='admin'
 export MONGRELDB_DB_PASSWORD='choose-a-strong-password'
 
-/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.4/mongreldb-server \
+/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.5/mongreldb-server \
   /home/user/.hermes/mongreldb_hermes_data \
   --port 8453 \
   --passphrase "$MONGRELDB_PASSPHRASE" \
@@ -180,7 +180,7 @@ export MONGRELDB_DB_PASSWORD='choose-a-strong-password'
 - HTTP-facing daemon auth is separate again: e.g. **`--auth-token`** (Bearer) or **`--auth-users`** (Basic) for the Kit/SQL HTTP surface. Prefer not exposing the daemon off loopback without a reverse proxy + TLS.
 - Set `MONGRELDB_DAEMON_AUTH_TOKEN` when the daemon uses `--auth-token`.
 
-See the engine docs: [Encryption](https://github.com/visorcraft/MongrelDB/blob/v0.64.4/docs/07-encryption.md) and [Credential enforcement](https://github.com/visorcraft/MongrelDB/blob/v0.64.4/docs/15-credential-enforcement.md).
+See the engine docs: [Encryption](https://github.com/visorcraft/MongrelDB/blob/v0.64.5/docs/07-encryption.md) and [Credential enforcement](https://github.com/visorcraft/MongrelDB/blob/v0.64.5/docs/15-credential-enforcement.md).
 
 #### Native mode (`libmongreldb.so`)
 
@@ -196,7 +196,7 @@ The plugin creates the database and table on first use.
 - [Modes](MongrelDB_modes.md) - native FFI vs HTTP daemon
 - [Dense ANN](MongrelDB_dense.md) - default `all-MiniLM-L6-v2` setup and model policy
 - [Standalone Rust](MongrelDB_standalone.md) - using MongrelDB directly outside Hermes
-- [Engine embeddings & retrieval](https://github.com/visorcraft/MongrelDB/blob/v0.64.4/docs/22-embeddings-and-retrieval.md) - pluggable `EmbeddingSource` / provider registry
+- [Engine embeddings & retrieval](https://github.com/visorcraft/MongrelDB/blob/v0.64.5/docs/22-embeddings-and-retrieval.md) - pluggable `EmbeddingSource` / provider registry
 
 ## Modes
 
@@ -243,7 +243,7 @@ See [MongrelDB_modes.md](MongrelDB_modes.md). Helper scripts: `start_daemon.sh`,
 
 - **Native FFI** path is the primary, tested mode (model-free and dense ANN with MiniLM).
 - **Daemon mode** uses the server's typed `/kit/*` HTTP API for schema creation, writes, hybrid search, filtering, and deletion. The bundled daemon starts automatically when needed.
-- Native mode requires MongrelDB 0.64.4. Daemon mode requires `mongreldb-server` 0.64.4 and is compatible with MongrelDB Kit 0.64.4.
+- Native mode requires MongrelDB 0.64.5. Daemon mode requires `mongreldb-server` 0.64.5 and is compatible with MongrelDB Kit 0.64.5.
 
 ## Development Notes
 
