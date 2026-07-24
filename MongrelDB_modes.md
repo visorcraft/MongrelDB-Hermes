@@ -67,7 +67,7 @@ memory:
     daemon_data_dir: /home/user/.hermes/mongreldb_hermes_data
     daemon_pidfile: /tmp/mongreldb-hermes.pid
     daemon_log: /tmp/mongreldb-hermes.log
-    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.5/mongreldb-server
+    daemon_binary: /home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.6/mongreldb-server
     retrieval_mode: dense
     embedding_model: "all-MiniLM-L6-v2"
     dim: 384
@@ -77,7 +77,7 @@ memory:
 
 ```bash
 export MONGRELDB_PASSPHRASE="$(cat ~/.hermes/mongreldb_hermes.key)"
-/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.5/mongreldb-server \
+/home/user/.hermes/plugins/mongreldb_hermes/vendor/0.64.6/mongreldb-server \
     /home/user/.hermes/mongreldb_hermes_data \
     --port 8453 \
     --passphrase "$MONGRELDB_PASSPHRASE" \
