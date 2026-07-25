@@ -12,38 +12,38 @@ import urllib.request
 from pathlib import Path
 
 
-VERSION = "0.64.8"
+VERSION = "0.64.9"
 KEY_FILENAME = "mongreldb_hermes.key"
 RELEASE_BASE = f"https://github.com/visorcraft/MongrelDB/releases/download/v{VERSION}"
 
 _ASSETS = {
     "linux-x64-gnu": {
-        "native": ("mongreldb-native-linux-x64-gnu.tar.gz", "e7be4282226b5099e17d71fe278885887b73358b25a8e85d609b94c70c7a464e"),
-        "server": ("mongreldb-server-linux-x64", "f07a920e6ddeeefeac0f11f2741daf6737bc96f3c755282ca6f2f964e6de321c"),
+        "native": ("mongreldb-native-linux-x64-gnu.tar.gz", "5f3466a03c1f7c09cbeda6d398ae27b834c833342a694971b1840a7be0744334"),
+        "server": ("mongreldb-server-linux-x64", "4fb4b8821c69d4207381e6e2c00c9c963867c128fd020fbb2bbd60d9553bb54f"),
         "library_member": "mongreldb-native/lib/libmongreldb.so",
         "library_name": "libmongreldb.so",
     },
     "linux-x64-musl": {
-        "native": ("mongreldb-native-linux-x64-musl.tar.gz", "71461b8656c1a2c450c6ddf50b69f5f266352ac6c18e7c54a9b46bbbc940ac47"),
-        "server": ("mongreldb-server-linux-x64-musl", "86029f4d9b0ecbbad4d4aeee680ddd7573d4dee414cfabcfb7a1852a93cda329"),
+        "native": ("mongreldb-native-linux-x64-musl.tar.gz", "8a9497771e1f7cbe40dab8bf8dc64d68187eb0cb05ada284d89d7d224547a08f"),
+        "server": ("mongreldb-server-linux-x64-musl", "ca03ce4d2767dc6acd4e3acfa96b847c78695f19a052c21e5822ffc7adae5958"),
         "library_member": "mongreldb-native/lib/libmongreldb.so",
         "library_name": "libmongreldb.so",
     },
     "linux-arm64-gnu": {
-        "native": ("mongreldb-native-linux-arm64-gnu.tar.gz", "7daf74df12b89c2e070da15507fd685c6071441ffe54405678f99c28de674712"),
-        "server": ("mongreldb-server-linux-arm64", "f61dd6e6d42b23f98a53b52c0a65b122d3d1c94f8bf2a4d80735c34acc19b509"),
+        "native": ("mongreldb-native-linux-arm64-gnu.tar.gz", "50ff22ef84332af00f9c9b2d6417f7dcae980c5f9de650220a1ccf6c62231aa6"),
+        "server": ("mongreldb-server-linux-arm64", "03b798da4837086f822a303dc5e6b9c716e7f79b7ec1aae5ae4c623cad91a383"),
         "library_member": "mongreldb-native/lib/libmongreldb.so",
         "library_name": "libmongreldb.so",
     },
     "darwin-arm64": {
-        "native": ("mongreldb-native-darwin-arm64.tar.gz", "45cb044f93b83a1db8004d111796d4f450cf63be77ba09697215e384349e1791"),
-        "server": ("mongreldb-server-darwin-arm64", "f2eb2f841e405d77f6f4ba99f205239d820350a1431db335133146d9248f9ba3"),
+        "native": ("mongreldb-native-darwin-arm64.tar.gz", "cc2caec88d9a092f73f6b6c1df232e973a45573c6202c970860054279e40a799"),
+        "server": ("mongreldb-server-darwin-arm64", "d1cbf3e527099c66d49dfc9af34f6f28c4725ed7b3abc3dd14542ef939812c6f"),
         "library_member": "mongreldb-native/lib/libmongreldb.dylib",
         "library_name": "libmongreldb.dylib",
     },
     "darwin-x64": {
-        "native": ("mongreldb-native-darwin-x64.tar.gz", "de762b6c6eacdcfef8bebb2c1ecb52c7640f4d472ffe8300c0f575ac12c4f90a"),
-        "server": ("mongreldb-server-darwin-universal", "bb6350e76dba1f5020eaea7722d3421bd0764b6f6d9590204d21cf1fd92e74fc"),
+        "native": ("mongreldb-native-darwin-x64.tar.gz", "4e7fa5f0b2e4616f8155ba99d33b3a858e0daf0e5d27eaaf8b31ae89ccb13a2b"),
+        "server": ("mongreldb-server-darwin-universal", "448bdd2fa6fb11e6136039fa8647d449bb321b16a83da4df80fbdb0917521c2b"),
         "library_member": "mongreldb-native/lib/libmongreldb.dylib",
         "library_name": "libmongreldb.dylib",
     },
