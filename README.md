@@ -251,6 +251,11 @@ See [MongrelDB_modes.md](MongrelDB_modes.md). Helper scripts: `start_daemon.sh`,
 - A MongrelDB path is a **data directory**, not a single file.
 - Do not invent weak hashed dense vectors to "fake" ANN; prefer sparse retrieval when no real model is available.
 
+## Related tools
+
+- [Mongrel](https://visorcraft.com/mongreldb) — Commercial multi-system workbench with native MongrelDB support.
+- [MongrelDB Viewer](https://github.com/visorcraft/MongrelDB-Viewer) — Free, open-source MongrelDB GUI and MCP server.
+
 ## License
 
 MIT OR Apache-2.0
