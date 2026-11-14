@@ -67,7 +67,11 @@ def test_daemon_round_trip():
             elif self.path == "/kit/txn":
                 operation = payload["ops"][0]
                 if "put" in operation:
-                    type(self).row = operation["put"]["cells"]
+                    cells = operation["put"]["cells"]
+                    pairs = {cells[index]: cells[index + 1] for index in range(0, len(cells), 2)}
+                    assert isinstance(pairs[5], list)
+                    assert isinstance(pairs[17], str)
+                    type(self).row = cells
                     self._send({"status": "committed", "results": [{"kind": "put"}]})
                 else:
                     type(self).row = None
